@@ -120,4 +120,16 @@ bases/{baseId}/
 - **二进制格式**：`txt/md/csv/json/html/代码` 等文本类直接解析；PDF / Office 等二进制需先转换为文本（插件不内置文件处理器）
 - **检索规模**：向量车道为暴力扫描（与 Cherry 当前实现一致），单库向量行数建议控制在十万以内
 - **URL 快照**：首次索引抓取一次并落盘（离线可读）；"刷新"重新抓取；抓取受网络白名单约束
-- **阈值语义**：`threshold` 字段保留，但当前实现只产生 `ranking` 分数（BM25/RRF），阈值仅对 `relevance` 分数生效（暂无 rerank），与 Cherry 当前行为一致
+- **阈值语义**：`threshold` 仅对 rerank 的 `relevance` 分数生效；BM25/RRF 的 `ranking` 分数透传不过滤（与 Cherry 当前行为一致）
+
+## 参考与致谢
+
+本项目借鉴了以下开源项目的设计与实现，特此声明并致谢：
+
+| 项目 | 许可证 | 借鉴内容 |
+| --- | --- | --- |
+| [Cherry Studio](https://github.com/CherryHQ/cherry-studio) | [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) | **设计参考**：知识库 v2 架构（管理化材料库、导入即快照、生命周期状态机、BM25/向量混合检索与 RRF 融合、rerank 精排与阈值语义、异步索引工作流、删除即取消）。本插件为独立实现，未复制其代码。 |
+| [openhanako](https://github.com/Ganlin/openhanako)（Hanko Agent） | [Apache-2.0](http://www.apache.org/licenses/LICENSE-2.0) | **代码参考**：`lib/types.ts` 为 `@hana/plugin-runtime` / `@hana/plugin-protocol` 的类型子集（Apache-2.0 允许复制，保留本声明）；插件 manifest 结构、工具命名导出协议、路由注册方式均按其平台规范实现。 |
+| [hana-desktop-orchestrator](https://github.com/Ganlin/hana-desktop-orchestrator) | MIT | **实现参考**：插件部署最佳实践（ESM 产物 + `package.json(type: module)`、全内联 HTML 管理界面、相对路径 API 与查询参数继承、发布包结构）。 |
+
+**本项目许可证：MIT**（见 `LICENSE` 文件）。若你有意分发或修改本插件，请遵守各参考项目的许可证条款（尤其 Cherry Studio 的 AGPL-3.0 约束）。
