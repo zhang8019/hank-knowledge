@@ -1,0 +1,129 @@
+{
+  "manifestVersion": 1,
+  "id": "hank-knowledge",
+  "name": "知识库",
+  "version": "0.2.0",
+  "description": "知识库插件：把 Cherry Studio 的知识库能力移植到 Hanko Agent。管理化材料库（导入即快照、生命周期状态机、后台异步索引），默认 BM25 全文检索，可配置 embedding 升级为向量 / 混合检索，可配置 rerank 精排。",
+  "author": {
+    "name": "zhang8019",
+    "url": "https://github.com/zhang8019"
+  },
+  "license": "MIT",
+  "minAppVersion": "0.170.0",
+  "trust": "full-access",
+  "categories": ["knowledge", "retrieval", "rag"],
+  "keywords": ["knowledge", "rag", "bm25", "embedding", "rerank", "检索", "知识库"],
+  "capabilities": [
+    "resource.read",
+    "resource.write",
+    "network.fetch",
+    "session"
+  ],
+  "activationEvents": ["onStartup"],
+  "ui": {
+    "hostCapabilities": []
+  },
+  "network": {
+    "allowedHosts": [
+      "api.openai.com",
+      "*.openai.com",
+      "dashscope.aliyuncs.com",
+      "*.aliyuncs.com",
+      "api.siliconflow.cn",
+      "*.siliconflow.cn",
+      "api.bigmodel.cn",
+      "open.bigmodel.cn",
+      "aip.baidubce.com",
+      "*.baidubce.com",
+      "api.xf-yun.com",
+      "ark.cn-beijing.volces.com",
+      "*.volces.com",
+      "api.deepseek.com",
+      "api.moonshot.cn",
+      "api.jina.ai",
+      "*.jina.ai",
+      "api.cohere.com",
+      "*.cohere.com",
+      "api.githubcopilot.com"
+    ],
+    "methods": ["GET", "POST"],
+    "allowLocalhost": true,
+    "defaultTimeoutMs": 60000,
+    "maxResponseBytes": 8388608
+  },
+  "contributes": {
+    "page": {
+      "title": "知识库",
+      "route": "/page",
+      "icon": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M4 5a2 2 0 0 1 2-2h5l2 2h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z\"/><path d=\"M8 11h8M8 15h5\"/></svg>"
+    },
+    "widget": {
+      "title": "知识库",
+      "route": "/widget",
+      "icon": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M4 5a2 2 0 0 1 2-2h5l2 2h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z\"/><path d=\"M8 11h8M8 15h5\"/></svg>"
+    },
+    "configuration": {
+      "properties": {
+        "embeddingBaseUrl": {
+          "type": "string",
+          "default": "https://api.siliconflow.cn/v1",
+          "title": "嵌入模型 API 地址",
+          "description": "OpenAI 兼容的 /embeddings 端点，默认硅基流动（https://api.siliconflow.cn/v1），可改为其他兼容服务或本地 Ollama。留空则知识库仅使用 BM25 全文检索。"
+        },
+        "embeddingApiKey": {
+          "type": "string",
+          "default": "",
+          "title": "嵌入模型 API 密钥",
+          "description": "调用嵌入服务所需的鉴权密钥；本地服务（如 Ollama）可留空。"
+        },
+        "embeddingModel": {
+          "type": "string",
+          "default": "BAAI/bge-m3",
+          "title": "嵌入模型",
+          "description": "Embedding 模型名，默认硅基流动 BAAI/bge-m3，可改为 text-embedding-3-small / text-embedding-v3 等。"
+        },
+        "embeddingDimensions": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "title": "嵌入向量维度",
+          "description": "向量维度；0 表示首次索引时自动探测。"
+        },
+        "rerankBaseUrl": {
+          "type": "string",
+          "default": "https://api.siliconflow.cn/v1",
+          "title": "重排序模型 API 地址",
+          "description": "兼容 /rerank 接口的端点（Jina / Cohere 风格），默认硅基流动 https://api.siliconflow.cn/v1。留空则不做重排序。"
+        },
+        "rerankApiKey": {
+          "type": "string",
+          "default": "",
+          "title": "重排序模型 API 密钥",
+          "description": "调用重排序服务所需的鉴权密钥。"
+        },
+        "rerankModel": {
+          "type": "string",
+          "default": "BAAI/bge-reranker-v2-m3",
+          "title": "重排序模型",
+          "description": "Rerank 模型名，默认硅基流动 BAAI/bge-reranker-v2-m3，可改为 jina-reranker-v2-base-multilingual 等。"
+        },
+        "searchDefaultDocumentCount": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "title": "默认检索条数",
+          "description": "搜索默认返回的文档条数。"
+        },
+        "searchThreshold": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1,
+          "title": "检索相关性阈值",
+          "description": "仅对重排序后的相关性分数生效；0 表示不过滤。"
+        }
+      }
+    }
+  }
+}

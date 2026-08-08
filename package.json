@@ -1,0 +1,18 @@
+{
+  "name": "hank-knowledge",
+  "version": "0.2.0",
+  "type": "module",
+  "license": "MIT",
+  "author": "zhang8019",
+  "description": "Knowledge Base plugin for Hana (Hanko Agent): managed material library with BM25 / vector / rerank retrieval.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
+    "smoke": "node tests/smoke.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}
