@@ -12,6 +12,7 @@ import { EmbeddingClient } from "./embedding";
 import { KnowledgeGraph } from "./graph";
 import { MemoryIndex } from "./index";
 import { KnowledgeService } from "./knowledge";
+import { LlmClient } from "./llm";
 import { MineruClient } from "./mineru";
 import { RerankClient } from "./rerank";
 import { KnowledgeStore } from "./store";
@@ -50,6 +51,7 @@ export function initRuntime(ctx: HanaPluginContext): RuntimeBundle {
     network: ctx.network,
     log: ctx.log,
   });
+  const getLlm = () => LlmClient.fromConfig(ctx.config, ctx.network);
   const service = new KnowledgeService({
     store,
     index,
@@ -57,6 +59,7 @@ export function initRuntime(ctx: HanaPluginContext): RuntimeBundle {
     workflow,
     getEmbedding,
     getRerank,
+    getLlm,
     network: ctx.network,
     config: ctx.config,
     log: ctx.log,

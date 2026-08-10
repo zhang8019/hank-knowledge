@@ -10,6 +10,7 @@
 import { EmbeddingClient } from "../lib/embedding";
 import { RerankClient } from "../lib/rerank";
 import { MineruClient } from "../lib/mineru";
+import { LlmClient } from "../lib/llm";
 import { ensureRuntime } from "../lib/runtime";
 import type { KnowledgeAddInput } from "../lib/knowledge";
 
@@ -43,6 +44,7 @@ export default function registerKnowledgePageRoutes(app: any, _ctx: any): void {
     const embedding = await EmbeddingClient.fromConfig(bundle.ctx.config, bundle.ctx.network);
     const rerank = await RerankClient.fromConfig(bundle.ctx.config, bundle.ctx.network);
     const mineru = await MineruClient.fromConfig(bundle.ctx.config, bundle.ctx.network);
+    const llm = await LlmClient.fromConfig(bundle.ctx.config, bundle.ctx.network);
     return {
       embeddingConfigured: Boolean(embedding),
       embeddingModel: embedding ? embedding.model : "",
@@ -51,6 +53,8 @@ export default function registerKnowledgePageRoutes(app: any, _ctx: any): void {
       mineruConfigured: Boolean(mineru),
       mineruModel: mineru ? mineru.model : "",
       mineruApiKey: mineru ? mineru.configuredApiKey : false,
+      llmConfigured: Boolean(llm),
+      llmModel: llm ? llm.model : "",
     };
   }));
 
@@ -304,6 +308,25 @@ export default function registerKnowledgePageRoutes(app: any, _ctx: any): void {
     const query = String(c.req.query("q") ?? "");
     if (!query) return { nodes: [], answerKind: "synthesis" };
     return bundle.service.graphAnswer(c.req.param("id"), query);
+  }));
+
+  // ---- LLM Wiki ----
+  app.post("/api/bases/:id/wiki-ingest", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.text !== "string" || !body.text.trim()) throw new Error("缺少 text（材料内容）");
+    const result = await bundle.service.wikiIngest({
+      baseId: c.req.param("id"),
+      itemId: typeof body.itemId === "string" ? body.itemId : "manual",
+      itemName: typeof body.itemName === "string" && body.itemName ? body.itemName : "未命名材料",
+      text: body.text,
+      useLlm: body.useLlm,
+    });
+    return result;
+  }));
+
+  app.get("/api/bases/:id/wiki-lint", handler(async (bundle, c) => {
+    const report = await bundle.service.wikiLint(c.req.param("id"));
+    return { report };
   }));
 }
 

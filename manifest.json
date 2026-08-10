@@ -187,6 +187,24 @@
           "minimum": 0,
           "title": "分段页数上限",
           "description": "自动拆分时每段的最大页数；0 表示使用 API 默认上限（Agent 20 / 精准 200）。"
+        },
+        "llmBaseUrl": {
+          "type": "string",
+          "default": "",
+          "title": "LLM API 地址",
+          "description": "OpenAI 兼容的 /chat/completions 端点，如 https://api.siliconflow.cn/v1。用于 Wiki 摄入摘要/概念抽取/矛盾检测。留空则使用确定性算法（无 LLM 也能运行）。"
+        },
+        "llmApiKey": {
+          "type": "string",
+          "default": "",
+          "title": "LLM API 密钥",
+          "description": "调用 LLM 服务所需的鉴权密钥；本地服务（如 Ollama）可留空。"
+        },
+        "llmModel": {
+          "type": "string",
+          "default": "Qwen/Qwen2.5-7B-Instruct",
+          "title": "LLM 模型",
+          "description": "LLM 模型名，如 Qwen/Qwen2.5-7B-Instruct / gpt-4o-mini / deepseek-v3。"
         }
       }
     }

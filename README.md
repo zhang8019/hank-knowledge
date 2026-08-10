@@ -121,8 +121,23 @@ node --env-file=.env tests/real-models.mjs  # SiliconFlow bge-m3 + bge-reranker 
 | `knowledge_build_tree` | 把一本书/材料自动编译为神经树（章节→主干→神经元→突触） | review |
 | `knowledge_verify_tree` | 对神经树运行验证器（V1-V17），输出健康度 | 只读 |
 | `knowledge_list_tree` | 列出神经树结构（按主干分组展示神经元） | 只读 |
+| `knowledge_wiki_ingest` | 把材料摄入 Wiki 层（source/concept/entity 页 + 矛盾检测） | review |
+| `knowledge_wiki_lint` | Wiki 全库体检（孤儿页/稀疏页/成熟度建议） | 只读 |
 
 另注册 bus 能力 `hank-knowledge:list-bases` / `hank-knowledge:search` / `hank-knowledge:add-items`，供宿主与其他插件以 `requestBus` 调用。
+
+## LLM Wiki（v1.0 新增）
+
+摄入材料 → 自动建立 wiki 层页面（fuzzy 起步），与神经树共享同一张图谱：
+
+- **source 页**：材料摘要（`lib/wiki.ts`）
+- **concept / entity 页**：自动抽取，多源引用自动合并 → 达到阈值建议提升 `emerging`
+- **矛盾检测**：摄入时标记（LLM 语义检测 / 确定性相似度降级）
+- **成熟度评估**：复用 P1 状态机，lint 报告孤儿页/稀疏页/提升建议
+
+**LLM 可选增强**（manifest 配置 `llmBaseUrl`/`llmApiKey`/`llmModel`，OpenAI 兼容 chat/completions）：
+- 配置后用于摘要 / 概念抽取 / 矛盾语义检测
+- **未配置 → 确定性算法自动降级**（高频关键词抽取 + 相似度矛盾检测），无 LLM 也能运行
 
 ## 神经树构建（v1.0 新增）
 

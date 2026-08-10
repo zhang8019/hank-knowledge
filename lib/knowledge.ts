@@ -24,6 +24,9 @@ import { TreeBuilder } from "./tree-builder";
 import type { TreeBuildInput } from "./tree-builder";
 import { TreeVerifier } from "./verifier";
 import type { TreeVerificationReport } from "./verifier";
+import { WikiIngester } from "./wiki";
+import type { WikiIngestInput, WikiIngestResult } from "./wiki";
+import type { LlmClient } from "./llm";
 
 export interface SearchOptions {
   topK?: number;
@@ -54,6 +57,7 @@ export interface KnowledgeServiceDeps {
   workflow: KnowledgeWorkflow;
   getEmbedding: () => Promise<EmbeddingClient | null>;
   getRerank: () => Promise<RerankClient | null>;
+  getLlm: () => Promise<LlmClient | null>;
   network: HanaPluginNetwork;
   config: HanaPluginConfigStore;
   log: HanaPluginLogger;
@@ -281,6 +285,31 @@ export class KnowledgeService {
     const nodes = await this.deps.graph.findByTrigger(baseId, query);
     const codified = nodes.filter((n) => n.maturity === "codified");
     return { nodes: codified, answerKind: codified.length > 0 ? "verdict" : "synthesis" as const };
+  }
+
+  // ---- LLM Wiki ----
+
+  /** 摄入材料到 wiki 层（source/entity/concept 页 + 矛盾检测 + 成熟度评估）。 */
+  async wikiIngest(input: WikiIngestInput): Promise<WikiIngestResult> {
+    await this.deps.store.requireBase(input.baseId);
+    const ingester = new WikiIngester(this.deps.graph, this.deps.getLlm);
+    return ingester.ingest(input);
+  }
+
+  /** Wiki 全库 lint：孤儿页 / 稀疏页 / 成熟度建议。 */
+  async wikiLint(baseId: string) {
+    const graph = await this.deps.graph.load(baseId);
+    const pages = graph.nodes.filter((n) => n.type === "wiki-page" || n.type === "concept" || n.type === "entity");
+    const orphans = pages.filter((n) => n.inbound.length === 0 && n.outbound.length === 0);
+    const sparse = pages.filter((n) => (n.elements?.definition?.length ?? 0) < 20);
+    const suggestions = pages.map((node) => ({ node, eval: evaluateMaturity(node) }))
+      .filter(({ eval: e }) => e.reasons.length > 0);
+    return {
+      pageCount: pages.length,
+      orphans: orphans.map((n) => n.title),
+      sparse: sparse.map((n) => n.title),
+      maturitySuggestions: suggestions.map(({ node, eval: s }) => ({ nodeId: s.nodeId, title: node.title, suggested: s.suggested, reasons: s.reasons })),
+    };
   }
 
   // ---- 材料 ----
