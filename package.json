@@ -10,7 +10,8 @@
     "build": "node scripts/build.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "smoke": "node tests/smoke.mjs",
-    "test:mineru": "node tests/mineru.mjs"
+    "test:mineru": "node tests/mineru.mjs",
+    "test:graph": "node tests/graph.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -201,6 +201,84 @@ export default function registerKnowledgePageRoutes(app: any, _ctx: any): void {
     const chunks = await bundle.service.listItemChunks(c.req.param("id"), c.req.param("itemId"));
     return { chunks };
   }));
+
+  // ---- 知识图谱 ----
+  app.get("/api/bases/:id/graph", handler(async (bundle, c) => {
+    return { graph: await bundle.service.getGraph(c.req.param("id")) };
+  }));
+
+  app.post("/api/bases/:id/graph/nodes", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.title !== "string" || !body.title.trim()) throw new Error("缺少 title");
+    const node = await bundle.service.addGraphNode(c.req.param("id"), {
+      type: body.type,
+      maturity: body.maturity,
+      title: body.title,
+      elements: body.elements,
+      sourceRefs: body.sourceRefs,
+    });
+    return { node };
+  }));
+
+  app.patch("/api/bases/:id/graph/nodes/:nodeId", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const node = await bundle.service.updateGraphNode(c.req.param("id"), c.req.param("nodeId"), body);
+    return { node };
+  }));
+
+  app.delete("/api/bases/:id/graph/nodes/:nodeId", handler(async (bundle, c) => {
+    await bundle.service.deleteGraphNode(c.req.param("id"), c.req.param("nodeId"));
+    return { ok: true };
+  }));
+
+  app.post("/api/bases/:id/graph/edges", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.source !== "string" || typeof body.target !== "string") {
+      throw new Error("缺少 source / target");
+    }
+    const edge = await bundle.service.linkGraphNodes(c.req.param("id"), {
+      source: body.source,
+      target: body.target,
+      kind: body.kind,
+      relation: body.relation,
+      strength: body.strength,
+      bidirectional: body.bidirectional,
+    });
+    return { edge };
+  }));
+
+  app.delete("/api/bases/:id/graph/edges/:edgeId", handler(async (bundle, c) => {
+    await bundle.service.unlinkGraphNodes(c.req.param("id"), c.req.param("edgeId"));
+    return { ok: true };
+  }));
+
+  app.get("/api/bases/:id/graph/search", handler(async (bundle, c) => {
+    const query = String(c.req.query("q") ?? "");
+    const nodes = query ? await bundle.service.searchGraph(c.req.param("id"), query) : [];
+    return { nodes };
+  }));
+
+  app.get("/api/bases/:id/graph/nodes/:nodeId/neighbors", handler(async (bundle, c) => {
+    const neighbors = await bundle.service.graphNeighbors(c.req.param("id"), c.req.param("nodeId"));
+    return { neighbors };
+  }));
+
+  app.post("/api/bases/:id/graph/nodes/:nodeId/promote", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const node = await bundle.service.promoteNode(c.req.param("id"), c.req.param("nodeId"), { force: Boolean(body.force) });
+    return { node };
+  }));
+
+  app.post("/api/bases/:id/graph/nodes/:nodeId/demote", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const node = await bundle.service.demoteNode(c.req.param("id"), c.req.param("nodeId"), body.reason);
+    return { node };
+  }));
+
+  app.get("/api/bases/:id/graph/nodes/:nodeId/evaluate", handler(async (bundle, c) => {
+    const evaluation = await bundle.service.evaluateNode(c.req.param("id"), c.req.param("nodeId"));
+    return { evaluation };
+  }));
 }
 
 // ================= 页面渲染 =================

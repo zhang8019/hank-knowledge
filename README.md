@@ -113,8 +113,27 @@ node --env-file=.env tests/real-models.mjs  # SiliconFlow bge-m3 + bge-reranker 
 | `knowledge_read_item` | 读取材料全文 | 只读 |
 | `knowledge_list_item_chunks` | 查看材料的检索片段 | 只读 |
 | `knowledge_retry_item` | 重试失败材料 | routine |
+| `knowledge_list_graph` | 查看知识图谱（节点/边/成熟度统计） | 只读 |
+| `knowledge_add_node` | 创建图谱节点（神经元/wiki 页/entity/concept，10 元素） | routine |
+| `knowledge_link_nodes` | 建立节点关联（突触/wikilink） | routine |
+| `knowledge_promote_node` | 提升节点成熟度（emerging→codified，需过字段校验） | review |
+| `knowledge_demote_node` | 降级节点成熟度（codified→fuzzy，保留审计） | review |
 
 另注册 bus 能力 `hank-knowledge:list-bases` / `hank-knowledge:search` / `hank-knowledge:add-items`，供宿主与其他插件以 `requestBus` 调用。
+
+## 知识图谱（v1.0 新增）
+
+统一知识图谱数据层：节点（神经元 / wiki 页 / entity / concept）+ 边（突触 / wikilink / inferred / hierarchy），每个节点带**成熟度**字段：
+
+```
+fuzzy(探索) ──多源引用──▶ emerging(共识) ──人审+字段校验──▶ codified(判定单元)
+   ▲                                                          │
+   └──────────── supersede / 负面反馈×2 ──────────────────────┘（快照降级）
+```
+
+- **命名规范**（`lib/naming.ts`）：神经元 `N{序号}·{短语}`（≤15 字）、主干 `主干{序号}：{主题}`、树文件 `神经树_《领域名》_v1.0.md`、concept/entity `TitleCase`、source kebab-case；冲突自动 `_N` 后缀
+- **成熟度引擎**（`lib/maturity.ts`）：评估/提升门槛/降级触发；`emerging→codified` 永不自动（需 10 元素关键字段完整），`codified→fuzzy` 保留审计链
+- **触发词索引**：与 BM25 互补，结构化精确命中（codified 优先）
 
 ## 架构
 

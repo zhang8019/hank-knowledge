@@ -9,6 +9,7 @@
  */
 
 import { EmbeddingClient } from "./embedding";
+import { KnowledgeGraph } from "./graph";
 import { MemoryIndex } from "./index";
 import { KnowledgeService } from "./knowledge";
 import { MineruClient } from "./mineru";
@@ -21,6 +22,7 @@ export interface RuntimeBundle {
   ctx: HanaPluginContext;
   store: KnowledgeStore;
   index: MemoryIndex;
+  graph: KnowledgeGraph;
   workflow: KnowledgeWorkflow;
   service: KnowledgeService;
 }
@@ -36,6 +38,7 @@ function globalAny(): Record<string, unknown> {
 export function initRuntime(ctx: HanaPluginContext): RuntimeBundle {
   const store = new KnowledgeStore(ctx.dataDir);
   const index = new MemoryIndex();
+  const graph = new KnowledgeGraph(store);
   const getEmbedding = () => EmbeddingClient.fromConfig(ctx.config, ctx.network);
   const getRerank = () => RerankClient.fromConfig(ctx.config, ctx.network);
   const getMineru = () => MineruClient.fromConfig(ctx.config, ctx.network);
@@ -50,6 +53,7 @@ export function initRuntime(ctx: HanaPluginContext): RuntimeBundle {
   const service = new KnowledgeService({
     store,
     index,
+    graph,
     workflow,
     getEmbedding,
     getRerank,
@@ -57,7 +61,7 @@ export function initRuntime(ctx: HanaPluginContext): RuntimeBundle {
     config: ctx.config,
     log: ctx.log,
   });
-  const bundle: RuntimeBundle = { ctx, store, index, workflow, service };
+  const bundle: RuntimeBundle = { ctx, store, index, graph, workflow, service };
   globalAny()[globalSlot(ctx.pluginId)] = bundle;
   return bundle;
 }
