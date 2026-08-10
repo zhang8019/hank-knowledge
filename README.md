@@ -15,8 +15,8 @@
 - **生命周期状态机**：`idle → preparing → processing → reading → embedding → completed / failed / deleting`，UI 与工具全部基于业务状态，不扫描文件系统
 - **检索**：BM25（中文 bigram + 英文词，默认）→ 配置 embedding 后混合检索（BM25 + 向量，RRF 融合）→ 配置 rerank 后对候选片段精排（`relevance` 分数 + 阈值过滤）；返回 `pageContent / score / scoreKind / rank / chunkId / itemId`
 - **异步工作流**：建库 / 添加 / 删除 / 重建索引均"接受即返回"，索引在后台按库串行执行；插件重启后自动恢复未完成任务
-- **Agent 工具**：建库、增删材料、搜索、读取、查看 chunk、重试失败项
-- **管理界面**：插件页面 / 小组件（`/page`、`/widget`）全内联 HTML（中文），提供建库、上传、命中测试、状态监控，零外部资源请求
+- **Agent 工具**：建库、增删材料、搜索、读取、查看 chunk、重试失败项、图谱/神经树/Wiki 操作
+- **管理界面**：插件页面 / 小组件（`/page`、`/widget`）全内联 HTML（中文），玻璃拟态深色主题 + 成熟度色带；提供建库、上传、命中测试、**神经树力导向图**、**Wiki 视图**、**一键建树向导**、图谱管理面板，零外部资源请求
 
 ## 部署
 
