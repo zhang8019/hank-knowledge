@@ -2,6 +2,11 @@
 
 把 Cherry Studio 的知识库体系移植为 Hanko Agent（openhanako）插件：**管理化材料库**（导入即快照、生命周期状态机、后台异步索引），默认 BM25 全文检索，可配置 embedding 升级为向量 / 混合检索（RRF 融合），可配置 rerank 精排。
 
+## 安装
+
+- **官方市场**：HanaAgent 设置 → 插件 → 插件市场，搜索「知识库」安装（需开启 full-access 插件开关）
+- **手动**：将本仓库 `hank-knowledge/` 目录拖入设置页插件安装区，或解压 [Releases](https://github.com/zhang8019/hank-knowledge/releases) 里的安装包后放入 `${HANA_HOME}/plugins/`
+
 ## 功能
 
 - **知识库**：一个名称即可创建；BM25-only 起步，之后可在设置中配置 embedding 升级为向量检索
@@ -52,13 +57,13 @@ node --env-file=.env tests/real-models.mjs  # SiliconFlow bge-m3 + bge-reranker 
 
 | 配置项 | 说明 |
 | --- | --- |
-| `embeddingBaseUrl` | 嵌入模型 API 地址：OpenAI 兼容的 `/embeddings` 端点，如 `https://api.openai.com/v1` |
+| `embeddingBaseUrl` | 嵌入模型 API 地址：OpenAI 兼容的 `/embeddings` 端点，默认硅基流动 `https://api.siliconflow.cn/v1`，可改为其他兼容服务或本地 Ollama |
 | `embeddingApiKey` | 嵌入模型 API 密钥（本地服务如 Ollama 可留空） |
-| `embeddingModel` | 嵌入模型名，如 `text-embedding-3-small` / `text-embedding-v3` |
+| `embeddingModel` | 嵌入模型名，默认 `BAAI/bge-m3`（硅基流动），可改为 `text-embedding-3-small` / `text-embedding-v3` 等 |
 | `embeddingDimensions` | 嵌入向量维度；`0` 表示首次索引时自动探测 |
-| `rerankBaseUrl` | 重排序模型 API 地址：兼容 `/rerank` 接口（Jina / Cohere 风格），如 `https://api.jina.ai/v1` |
+| `rerankBaseUrl` | 重排序模型 API 地址：兼容 `/rerank` 接口（Jina / Cohere 风格），默认硅基流动 `https://api.siliconflow.cn/v1` |
 | `rerankApiKey` | 重排序模型 API 密钥 |
-| `rerankModel` | 重排序模型名，如 `jina-reranker-v2-base-multilingual` |
+| `rerankModel` | 重排序模型名，默认 `BAAI/bge-reranker-v2-m3`（硅基流动） |
 | `searchDefaultDocumentCount` | 默认检索条数 |
 | `searchThreshold` | 检索相关性阈值；仅对 rerank 的 `relevance` 分数生效，`0` 为不过滤 |
 

@@ -3,6 +3,10 @@ dist
 assets
 *.tgz
 .DS_Store
+*.log
+Thumbs.db
+plugin-data/
+*.local.json
 index.js
 tools/*.js
 routes/*.js

@@ -5,7 +5,8 @@
   "version": "0.2.0",
   "description": "知识库插件：把 Cherry Studio 的知识库能力移植到 Hanko Agent。管理化材料库（导入即快照、生命周期状态机、后台异步索引），默认 BM25 全文检索，可配置 embedding 升级为向量 / 混合检索，可配置 rerank 精排。",
   "author": {
-    "name": "hank-knowledge"
+    "name": "zhang8019",
+    "url": "https://github.com/zhang8019"
   },
   "license": "MIT",
   "minAppVersion": "0.170.0",
@@ -65,9 +66,9 @@
       "properties": {
         "embeddingBaseUrl": {
           "type": "string",
-          "default": "",
+          "default": "https://api.siliconflow.cn/v1",
           "title": "嵌入模型 API 地址",
-          "description": "OpenAI 兼容的 /embeddings 端点，如 https://api.openai.com/v1。留空则知识库仅使用 BM25 全文检索。"
+          "description": "OpenAI 兼容的 /embeddings 端点，默认硅基流动（https://api.siliconflow.cn/v1），可改为其他兼容服务或本地 Ollama。留空则知识库仅使用 BM25 全文检索。"
         },
         "embeddingApiKey": {
           "type": "string",
@@ -77,9 +78,9 @@
         },
         "embeddingModel": {
           "type": "string",
-          "default": "text-embedding-3-small",
+          "default": "BAAI/bge-m3",
           "title": "嵌入模型",
-          "description": "Embedding 模型名，如 text-embedding-3-small / text-embedding-v3。"
+          "description": "Embedding 模型名，默认硅基流动 BAAI/bge-m3，可改为 text-embedding-3-small / text-embedding-v3 等。"
         },
         "embeddingDimensions": {
           "type": "integer",
@@ -90,9 +91,9 @@
         },
         "rerankBaseUrl": {
           "type": "string",
-          "default": "",
+          "default": "https://api.siliconflow.cn/v1",
           "title": "重排序模型 API 地址",
-          "description": "兼容 /rerank 接口的端点（Jina / Cohere 风格），如 https://api.jina.ai/v1。留空则不做重排序。"
+          "description": "兼容 /rerank 接口的端点（Jina / Cohere 风格），默认硅基流动 https://api.siliconflow.cn/v1。留空则不做重排序。"
         },
         "rerankApiKey": {
           "type": "string",
@@ -102,9 +103,9 @@
         },
         "rerankModel": {
           "type": "string",
-          "default": "jina-reranker-v2-base-multilingual",
+          "default": "BAAI/bge-reranker-v2-m3",
           "title": "重排序模型",
-          "description": "Rerank 模型名，如 jina-reranker-v2-base-multilingual / bge-reranker-v2-m3。"
+          "description": "Rerank 模型名，默认硅基流动 BAAI/bge-reranker-v2-m3，可改为 jina-reranker-v2-base-multilingual 等。"
         },
         "searchDefaultDocumentCount": {
           "type": "integer",
