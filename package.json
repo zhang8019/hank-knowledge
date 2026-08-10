@@ -11,7 +11,8 @@
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "smoke": "node tests/smoke.mjs",
     "test:mineru": "node tests/mineru.mjs",
-    "test:graph": "node tests/graph.mjs"
+    "test:graph": "node tests/graph.mjs",
+    "test:tree": "node tests/tree.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

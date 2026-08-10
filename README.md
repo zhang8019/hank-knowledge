@@ -118,8 +118,21 @@ node --env-file=.env tests/real-models.mjs  # SiliconFlow bge-m3 + bge-reranker 
 | `knowledge_link_nodes` | 建立节点关联（突触/wikilink） | routine |
 | `knowledge_promote_node` | 提升节点成熟度（emerging→codified，需过字段校验） | review |
 | `knowledge_demote_node` | 降级节点成熟度（codified→fuzzy，保留审计） | review |
+| `knowledge_build_tree` | 把一本书/材料自动编译为神经树（章节→主干→神经元→突触） | review |
+| `knowledge_verify_tree` | 对神经树运行验证器（V1-V17），输出健康度 | 只读 |
+| `knowledge_list_tree` | 列出神经树结构（按主干分组展示神经元） | 只读 |
 
 另注册 bus 能力 `hank-knowledge:list-bases` / `hank-knowledge:search` / `hank-knowledge:add-items`，供宿主与其他插件以 `requestBus` 调用。
+
+## 神经树构建（v1.0 新增）
+
+**一本书 → 一棵树**（`lib/tree-builder.ts`）：
+1. 章节标题切主干（`## 解除类型` → `主干1：解除类型`）
+2. 段落聚类生成神经元（自动命名 `N{序号}·{关键词}`、自动提取触发词）
+3. 落 graph（codified 节点）+ 树内突触（流程衔接串联）
+4. 渲染标准 Markdown 树文件 `神经树_《领域名》_v1.0.md`
+
+**验证器**（`lib/verifier.ts`，V1-V17）：10 元素完整 / 触发词≥5 / 判定模板可执行 / 误判防御≥3 / 检查清单 / 突触 / 根验证 / Header 统计 / 出处可信度 L1-L3 / 矛盾检测，输出健康度（0-100，优/良/差）。
 
 ## 知识图谱（v1.0 新增）
 

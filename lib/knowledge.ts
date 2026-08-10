@@ -20,6 +20,10 @@ import { KnowledgeWorkflow } from "./workflow";
 import type { HanaPluginConfigStore, HanaPluginLogger, HanaPluginNetwork } from "./types";
 import { evaluateMaturity, validateCodify, DEFAULT_MATURITY_RULE } from "./maturity";
 import type { MaturityRule } from "./maturity";
+import { TreeBuilder } from "./tree-builder";
+import type { TreeBuildInput } from "./tree-builder";
+import { TreeVerifier } from "./verifier";
+import type { TreeVerificationReport } from "./verifier";
 
 export interface SearchOptions {
   topK?: number;
@@ -243,6 +247,40 @@ export class KnowledgeService {
   /** 记录检索命中（供成熟度评估）。 */
   async recordGraphHit(baseId: string, nodeIdValue: string, negative = false): Promise<void> {
     await this.deps.graph.recordHit(baseId, nodeIdValue, negative);
+  }
+
+  // ---- 神经树构建 ----
+
+  /** 由材料文本自动建树（一本书 → 一棵树），落 graph 并返回 Markdown。 */
+  async buildTree(input: TreeBuildInput) {
+    await this.deps.store.requireBase(input.baseId);
+    const builder = new TreeBuilder(this.deps.store, this.deps.graph);
+    return builder.build(input);
+  }
+
+  /** 校验一棵已构建的树（从 graph 读取结构 → 运行 V1-V17）。 */
+  async verifyTree(baseId: string): Promise<TreeVerificationReport> {
+    const graph = await this.deps.graph.load(baseId);
+    const neuronNodes = graph.nodes.filter((n) => n.type === "neuron");
+    const branches = clusterNeuronsByTag(neuronNodes);
+    if (branches.length === 0) {
+      throw new Error("该知识库没有神经树神经元（codified 节点），无法验证");
+    }
+    const verifier = new TreeVerifier({
+      stats: { neurons: neuronNodes.length, synapses: graph.edges.length, endings: 0 },
+      branches,
+      treeEdges: graph.edges.filter((e) => e.kind === "synapse"),
+      crossTreeEdges: graph.edges.filter((e) => e.kind === "hierarchy"),
+      selfCheck: "已由 hank-knowledge 构建",
+    });
+    return verifier.run();
+  }
+
+  /** 触发词命中时联动 codified 节点（供检索链路扩展）。 */
+  async graphAnswer(baseId: string, query: string) {
+    const nodes = await this.deps.graph.findByTrigger(baseId, query);
+    const codified = nodes.filter((n) => n.maturity === "codified");
+    return { nodes: codified, answerKind: codified.length > 0 ? "verdict" : "synthesis" as const };
   }
 
   // ---- 材料 ----
@@ -497,4 +535,21 @@ export function sanitizeFilename(name: string): string {
     .trim()
     .slice(0, 200);
   return cleaned === "." || cleaned === ".." ? "" : cleaned;
+}
+
+/** 按 tag（主干主题）将神经元节点聚类为验证用分支。 */
+function clusterNeuronsByTag(nodes: GraphNode[]): Array<{ index: number; title: string; neurons: GraphNode[] }> {
+  const byTag = new Map<string, GraphNode[]>();
+  for (const node of nodes) {
+    const tags = node.elements?.tags ?? [];
+    const primary = tags[0] ?? "未分类";
+    const list = byTag.get(primary) ?? [];
+    list.push(node);
+    byTag.set(primary, list);
+  }
+  return [...byTag.entries()].map(([title, neurons], index) => ({
+    index: index + 1,
+    title,
+    neurons,
+  }));
 }

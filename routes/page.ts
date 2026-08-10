@@ -279,6 +279,32 @@ export default function registerKnowledgePageRoutes(app: any, _ctx: any): void {
     const evaluation = await bundle.service.evaluateNode(c.req.param("id"), c.req.param("nodeId"));
     return { evaluation };
   }));
+
+  // ---- 神经树构建 / 验证 ----
+  app.post("/api/bases/:id/build-tree", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.domain !== "string" || !body.domain.trim()) throw new Error("缺少 domain（书名/主题）");
+    if (typeof body.text !== "string" || !body.text.trim()) throw new Error("缺少 text（材料内容）");
+    const result = await bundle.service.buildTree({
+      baseId: c.req.param("id"),
+      domain: body.domain,
+      text: body.text,
+      sourceRefs: body.sourceRefs,
+      maxNeuronsPerBranch: body.maxNeuronsPerBranch,
+    });
+    return result;
+  }));
+
+  app.post("/api/bases/:id/verify-tree", handler(async (bundle, c) => {
+    const report = await bundle.service.verifyTree(c.req.param("id"));
+    return { report };
+  }));
+
+  app.get("/api/bases/:id/graph-answer", handler(async (bundle, c) => {
+    const query = String(c.req.query("q") ?? "");
+    if (!query) return { nodes: [], answerKind: "synthesis" };
+    return bundle.service.graphAnswer(c.req.param("id"), query);
+  }));
 }
 
 // ================= 页面渲染 =================
