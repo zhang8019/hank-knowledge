@@ -2,7 +2,7 @@
  * 文件文本提取。
  *
  * 纯文本类直接 utf8 读取（GBK 兜底）；HTML 剥离标签；
- * PDF/Office 等二进制格式不提供原生解析——标记为需要转换。
+ * PDF/Office/图片等二进制格式标记为需要转换（可交给 MinerU）。
  */
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB
@@ -26,6 +26,12 @@ export function isTextLike(filename: string): boolean {
   return TEXT_EXTENSIONS.has(ext);
 }
 
+export function extensionOf(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? filename;
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+}
+
 export async function extractTextFromBuffer(
   filename: string,
   buffer: Buffer,
@@ -44,14 +50,8 @@ export async function extractTextFromBuffer(
   }
   return {
     ok: false,
-    reason: `暂不支持解析 ${ext || "未知"} 格式，请先转换为 txt/md/csv 等文本格式`,
+    reason: `暂不支持解析 ${ext || "未知"} 格式，请转换为 txt/md 文本，或配置 MinerU 自动解析`,
   };
-}
-
-function extensionOf(filename: string): string {
-  const base = filename.split(/[\\/]/).pop() ?? filename;
-  const dot = base.lastIndexOf(".");
-  return dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
 }
 
 function decodeText(buffer: Buffer): string {

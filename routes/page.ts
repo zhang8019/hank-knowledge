@@ -9,6 +9,7 @@
 
 import { EmbeddingClient } from "../lib/embedding";
 import { RerankClient } from "../lib/rerank";
+import { MineruClient } from "../lib/mineru";
 import { ensureRuntime } from "../lib/runtime";
 import type { KnowledgeAddInput } from "../lib/knowledge";
 
@@ -41,11 +42,15 @@ export default function registerKnowledgePageRoutes(app: any, _ctx: any): void {
   app.get("/api/status", handler(async (bundle) => {
     const embedding = await EmbeddingClient.fromConfig(bundle.ctx.config, bundle.ctx.network);
     const rerank = await RerankClient.fromConfig(bundle.ctx.config, bundle.ctx.network);
+    const mineru = await MineruClient.fromConfig(bundle.ctx.config, bundle.ctx.network);
     return {
       embeddingConfigured: Boolean(embedding),
       embeddingModel: embedding ? embedding.model : "",
       rerankConfigured: Boolean(rerank),
       rerankModel: rerank ? rerank.model : "",
+      mineruConfigured: Boolean(mineru),
+      mineruModel: mineru ? mineru.model : "",
+      mineruApiKey: mineru ? mineru.configuredApiKey : false,
     };
   }));
 
@@ -381,6 +386,7 @@ const PAGE_SCRIPT = `
     if (s.embeddingConfigured) parts.push("嵌入: " + s.embeddingModel);
     else parts.push("嵌入: 未配置");
     if (s.rerankConfigured) parts.push("重排: " + s.rerankModel);
+    if (s.mineruConfigured) parts.push("MinerU: " + s.mineruModel + (s.mineruApiKey ? " 🔑" : ""));
     $("serviceBadge").textContent = parts.join(" · ");
   }
 

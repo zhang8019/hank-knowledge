@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "hank-knowledge",
   "name": "知识库",
-  "version": "0.2.0",
-  "description": "知识库插件：把 Cherry Studio 的知识库能力移植到 Hanko Agent。管理化材料库（导入即快照、生命周期状态机、后台异步索引），默认 BM25 全文检索，可配置 embedding 升级为向量 / 混合检索，可配置 rerank 精排。",
+  "version": "1.0.0",
+  "description": "知识库插件：把 Cherry Studio 的知识库能力移植到 Hanko Agent。管理化材料库（导入即快照、生命周期状态机、后台异步索引），默认 BM25 全文检索，可配置 embedding 升级为向量 / 混合检索，可配置 rerank 精排，可配置 MinerU 高精度文档解析（PDF/Office/图片自动转 Markdown）。",
   "author": {
     "name": "zhang8019",
     "url": "https://github.com/zhang8019"
@@ -44,9 +44,13 @@
       "*.jina.ai",
       "api.cohere.com",
       "*.cohere.com",
-      "api.githubcopilot.com"
+      "api.githubcopilot.com",
+      "mineru.net",
+      "cdn-mineru.openxlab.org.cn",
+      "mineru.oss-cn-shanghai.aliyuncs.com",
+      "oss-mineru.openxlab.org.cn"
     ],
-    "methods": ["GET", "POST"],
+    "methods": ["GET", "POST", "PUT"],
     "allowLocalhost": true,
     "defaultTimeoutMs": 60000,
     "maxResponseBytes": 8388608
@@ -122,6 +126,67 @@
           "maximum": 1,
           "title": "检索相关性阈值",
           "description": "仅对重排序后的相关性分数生效；0 表示不过滤。"
+        },
+        "mineruBaseUrl": {
+          "type": "string",
+          "default": "https://mineru.net",
+          "title": "MinerU 解析服务地址",
+          "description": "MinerU 文档解析 API 地址，默认官方 https://mineru.net。留空则禁用 MinerU 转换，二进制文件（PDF/Office/图片）无法自动索引。"
+        },
+        "mineruApiKey": {
+          "type": "string",
+          "default": "",
+          "title": "MinerU API Token",
+          "description": "MinerU API Token（从 https://mineru.net/apiManage 创建，有效期三个月）。留空时使用免 Token 的 Agent 轻量 API（文件 ≤10MB / 20 页）。"
+        },
+        "mineruModel": {
+          "type": "string",
+          "default": "vlm",
+          "title": "MinerU 解析模型",
+          "description": "解析模型：vlm（推荐）/ pipeline / MinerU-HTML（HTML 文件必选 MinerU-HTML）。"
+        },
+        "mineruLanguage": {
+          "type": "string",
+          "default": "ch",
+          "title": "文档语言",
+          "description": "解析语言：ch（中英）/ en（纯英文）/ japan / korean 等。"
+        },
+        "mineruAutoConvert": {
+          "type": "boolean",
+          "default": true,
+          "title": "导入自动转换",
+          "description": "导入二进制文件（PDF/Office/图片）时自动调用 MinerU 转为 Markdown；关闭则仅标记需要转换。"
+        },
+        "mineruEnableTable": {
+          "type": "boolean",
+          "default": true,
+          "title": "表格识别",
+          "description": "启用表格识别（仅 pipeline/vlm 模型有效）。"
+        },
+        "mineruEnableFormula": {
+          "type": "boolean",
+          "default": true,
+          "title": "公式识别",
+          "description": "启用公式识别（仅 pipeline/vlm 模型有效）。"
+        },
+        "mineruOcr": {
+          "type": "boolean",
+          "default": false,
+          "title": "OCR 识别",
+          "description": "启用 OCR（扫描件识别，仅 pipeline/vlm 模型有效）。"
+        },
+        "mineruAutoSplit": {
+          "type": "boolean",
+          "default": true,
+          "title": "超限自动拆分",
+          "description": "PDF 页数超过 API 限制（Agent 20 页 / 精准 200 页）时自动分段解析并拼接；关闭则单次提交，超限报错。"
+        },
+        "mineruMaxPagesPerBatch": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "title": "分段页数上限",
+          "description": "自动拆分时每段的最大页数；0 表示使用 API 默认上限（Agent 20 / 精准 200）。"
         }
       }
     }

@@ -1,15 +1,16 @@
 {
   "name": "hank-knowledge",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "author": "zhang8019",
-  "description": "Knowledge Base plugin for Hana (Hanko Agent): managed material library with BM25 / vector / rerank retrieval.",
+  "description": "Knowledge Base plugin for Hana (Hanko Agent): managed material library with BM25 / vector / rerank retrieval and MinerU document parsing.",
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
-    "smoke": "node tests/smoke.mjs"
+    "smoke": "node tests/smoke.mjs",
+    "test:mineru": "node tests/mineru.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

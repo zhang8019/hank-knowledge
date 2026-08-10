@@ -69,7 +69,33 @@ node --env-file=.env tests/real-models.mjs  # SiliconFlow bge-m3 + bge-reranker 
 
 使用方式：新建知识库勾选"启用向量检索"；对已有库在管理界面点"启用向量"（自动探测维度并全库重建）、"启用重排"（对候选片段精排）。rerank 服务瞬时失败时自动降级为未重排结果，不中断检索。
 
-> **网络白名单**：Hana 插件平台强制 `network.allowedHosts`（manifest 已预置 OpenAI、阿里百炼、硅基流动、智谱、百度千帆、火山方舟、Jina、Cohere 等域名，并开放 localhost 供 Ollama）。使用其他服务时需将域名加入 `manifest.json` 的 `network.allowedHosts`（支持 `*.suffix` 通配）后重启。URL 快照抓取同样受此白名单约束。
+## 配置 MinerU 文档解析（可选）
+
+导入 PDF / Office（docx/pptx/xlsx 等）/ 图片时，插件会调用 MinerU 自动转换为 **Markdown** 后再索引（Agent 可直接阅读），转换产物落盘缓存，重建索引不重复调用。
+
+| 配置项 | 说明 |
+| --- | --- |
+| `mineruBaseUrl` | MinerU 解析服务地址，默认 `https://mineru.net`；留空则禁用 |
+| `mineruApiKey` | MinerU API Token（从 https://mineru.net/apiManage 创建，有效期三个月） |
+| `mineruModel` | 解析模型：`vlm`（推荐）/ `pipeline` / `MinerU-HTML`（HTML 必选） |
+| `mineruLanguage` | 文档语言，默认 `ch` |
+| `mineruAutoConvert` | 导入二进制文件时自动转换，默认开 |
+| `mineruEnableTable` / `mineruEnableFormula` / `mineruOcr` | 表格 / 公式 / OCR 识别开关 |
+| `mineruAutoSplit` | PDF 页数超限自动分段解析（默认开） |
+| `mineruMaxPagesPerBatch` | 分段每段最大页数；`0` = 用 API 默认上限 |
+
+**两种模式自动选择**：
+- 未配置 Token → **Agent 轻量 API**（免 Token，文件 ≤10MB / 20 页，仅输出 Markdown）
+- 配置 Token → **精准 API**（≤200MB / 200 页，支持批量与结构化输出）
+
+**超限自动处理**：
+- **页数超限**（PDF）：本地探测页数，按 `page_range` / `page_ranges` 分段解析并按页序拼接（如 45 页 → 3 段 `1-20` / `21-40` / `41-45`）
+- **大小超限**：Agent 超 10MB → 有 Token 自动升级精准 API；仍超 200MB → 报错提示拆分文件
+- 无法探测页数时按单次提交（服务端若报页数超限则失败）
+
+> 文件字节会上传至 MinerU 第三方服务器解析，敏感文件请谨慎。
+
+> **网络白名单**：Hana 插件平台强制 `network.allowedHosts`（manifest 已预置 OpenAI、阿里百炼、硅基流动、智谱、百度千帆、火山方舟、Jina、Cohere、MinerU 等域名，并开放 localhost 供 Ollama）。使用其他服务时需将域名加入 `manifest.json` 的 `network.allowedHosts`（支持 `*.suffix` 通配）后重启。URL 快照抓取同样受此白名单约束。
 
 ## Agent 工具
 
@@ -122,7 +148,8 @@ bases/{baseId}/
 
 ## 已知限制
 
-- **二进制格式**：`txt/md/csv/json/html/代码` 等文本类直接解析；PDF / Office 等二进制需先转换为文本（插件不内置文件处理器）
+- **二进制格式**：`txt/md/csv/json/html/代码` 等文本类直接解析；PDF / Office / 图片等二进制配置 MinerU 后自动转换，未配置时保持"需要转换"失败态
+- **MinerU 限额**：Agent 轻量 API ≤10MB/20 页；精准 API ≤200MB/200 页；文件上传至第三方服务器，敏感数据请注意
 - **检索规模**：向量车道为暴力扫描（与 Cherry 当前实现一致），单库向量行数建议控制在十万以内
 - **URL 快照**：首次索引抓取一次并落盘（离线可读）；"刷新"重新抓取；抓取受网络白名单约束
 - **阈值语义**：`threshold` 仅对 rerank 的 `relevance` 分数生效；BM25/RRF 的 `ranking` 分数透传不过滤（与 Cherry 当前行为一致）
