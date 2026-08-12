@@ -8,8 +8,6 @@
 
 import type { EmbeddingClient } from "./embedding";
 import { EmbeddingError } from "./embedding";
-import type { KnowledgeGraph, NodeInput, EdgeInput, GraphNode, GraphEdge } from "./graph";
-import { MATURITY_LABELS } from "./graph";
 import type { RerankClient } from "./rerank";
 import { RerankError } from "./rerank";
 import { assertSafeRelativePath, slugify } from "./ids";
@@ -18,15 +16,8 @@ import { tokenizeQuery } from "./tokenizer";
 import type { AddItemInput, ItemType, KnowledgeItem, KnowledgeStore } from "./store";
 import { KnowledgeWorkflow } from "./workflow";
 import type { HanaPluginConfigStore, HanaPluginLogger, HanaPluginNetwork } from "./types";
-import { evaluateMaturity, validateCodify, DEFAULT_MATURITY_RULE } from "./maturity";
-import type { MaturityRule } from "./maturity";
-import { TreeBuilder } from "./tree-builder";
-import type { TreeBuildInput } from "./tree-builder";
-import { TreeVerifier } from "./verifier";
-import type { TreeVerificationReport } from "./verifier";
-import { WikiIngester } from "./wiki";
+import { Wiki } from "./wiki";
 import type { WikiIngestInput, WikiIngestResult } from "./wiki";
-import type { LlmClient } from "./llm";
 
 export interface SearchOptions {
   topK?: number;
@@ -53,11 +44,9 @@ export interface KnowledgeAddInput {
 export interface KnowledgeServiceDeps {
   store: KnowledgeStore;
   index: MemoryIndex;
-  graph: KnowledgeGraph;
   workflow: KnowledgeWorkflow;
   getEmbedding: () => Promise<EmbeddingClient | null>;
   getRerank: () => Promise<RerankClient | null>;
-  getLlm: () => Promise<LlmClient | null>;
   network: HanaPluginNetwork;
   config: HanaPluginConfigStore;
   log: HanaPluginLogger;
@@ -162,154 +151,8 @@ export class KnowledgeService {
     // Cherry 语义：取消该库 active jobs，等退出后再物理删除
     this.deps.workflow.cancelBase(baseId);
     await this.deps.workflow.drain(baseId);
-    await this.deps.graph.dropBase(baseId);
     await this.deps.store.deleteBase(baseId);
     this.deps.index.dropBase(baseId);
-  }
-
-  // ---- 知识图谱 ----
-
-  /** 读取整张图谱（节点 + 边 + 审计）。 */
-  async getGraph(baseId: string) {
-    const graph = await this.deps.graph.load(baseId);
-    return {
-      nodes: graph.nodes,
-      edges: graph.edges,
-      audit: graph.audit,
-      triggerCount: Object.keys(graph.triggerIndex).length,
-      updatedAt: graph.updatedAt,
-    };
-  }
-
-  /** 新增节点（fuzzy 起步）。 */
-  async addGraphNode(baseId: string, input: NodeInput): Promise<GraphNode> {
-    await this.deps.store.requireBase(baseId);
-    return this.deps.graph.addNode(baseId, input);
-  }
-
-  /** 更新节点。 */
-  async updateGraphNode(baseId: string, nodeIdValue: string, patch: { title?: string; elements?: Record<string, unknown>; sourceRefs?: string[] }): Promise<GraphNode> {
-    return this.deps.graph.updateNode(baseId, nodeIdValue, patch);
-  }
-
-  /** 删除节点（连带其边）。 */
-  async deleteGraphNode(baseId: string, nodeIdValue: string): Promise<void> {
-    await this.deps.graph.deleteNode(baseId, nodeIdValue);
-  }
-
-  /** 建立节点关联（突触 / wikilink）。 */
-  async linkGraphNodes(baseId: string, input: EdgeInput): Promise<GraphEdge> {
-    return this.deps.graph.linkNodes(baseId, input);
-  }
-
-  /** 解除关联。 */
-  async unlinkGraphNodes(baseId: string, edgeIdValue: string): Promise<void> {
-    await this.deps.graph.unlinkNodes(baseId, edgeIdValue);
-  }
-
-  /** 节点邻居（含关联边）。 */
-  async graphNeighbors(baseId: string, nodeIdValue: string) {
-    return this.deps.graph.neighbors(baseId, nodeIdValue);
-  }
-
-  /** 触发词检索图谱节点（codified 优先）。 */
-  async searchGraph(baseId: string, query: string): Promise<GraphNode[]> {
-    return this.deps.graph.findByTrigger(baseId, query);
-  }
-
-  /**
-   * 提升节点（emerging → codified）。
-   * 硬规则：必须过 validateCodify 门槛（10 元素关键字段完整），否则拒绝。
-   */
-  async promoteNode(baseId: string, nodeIdValue: string, opts: { force?: boolean } = {}): Promise<GraphNode> {
-    const node = await this.deps.graph.requireNode(baseId, nodeIdValue);
-    if (node.maturity !== "emerging") {
-      throw new Error(`仅 emerging 节点可提升（当前 ${MATURITY_LABELS[node.maturity]}）`);
-    }
-    if (!opts.force) {
-      const blocker = validateCodify(node);
-      if (blocker) {
-        throw new Error(`无法提升：${blocker}。请先补全神经元元素，或使用 force 强制`);
-      }
-    }
-    return this.deps.graph.setMaturity(baseId, nodeIdValue, "codified", "提升为神经树判定单元");
-  }
-
-  /** 降级节点（codified/emerging → fuzzy，保留审计快照）。 */
-  async demoteNode(baseId: string, nodeIdValue: string, reason = "人工降级"): Promise<GraphNode> {
-    const node = await this.deps.graph.requireNode(baseId, nodeIdValue);
-    if (node.maturity === "fuzzy") throw new Error("节点已在探索态");
-    return this.deps.graph.setMaturity(baseId, nodeIdValue, "fuzzy", reason);
-  }
-
-  /** 评估节点成熟度（只读建议）。 */
-  async evaluateNode(baseId: string, nodeIdValue: string, rule?: MaturityRule) {
-    const node = await this.deps.graph.requireNode(baseId, nodeIdValue);
-    return evaluateMaturity(node, rule ?? DEFAULT_MATURITY_RULE);
-  }
-
-  /** 记录检索命中（供成熟度评估）。 */
-  async recordGraphHit(baseId: string, nodeIdValue: string, negative = false): Promise<void> {
-    await this.deps.graph.recordHit(baseId, nodeIdValue, negative);
-  }
-
-  // ---- 神经树构建 ----
-
-  /** 由材料文本自动建树（一本书 → 一棵树），落 graph 并返回 Markdown。 */
-  async buildTree(input: TreeBuildInput) {
-    await this.deps.store.requireBase(input.baseId);
-    const builder = new TreeBuilder(this.deps.store, this.deps.graph);
-    return builder.build(input);
-  }
-
-  /** 校验一棵已构建的树（从 graph 读取结构 → 运行 V1-V17）。 */
-  async verifyTree(baseId: string): Promise<TreeVerificationReport> {
-    const graph = await this.deps.graph.load(baseId);
-    const neuronNodes = graph.nodes.filter((n) => n.type === "neuron");
-    const branches = clusterNeuronsByTag(neuronNodes);
-    if (branches.length === 0) {
-      throw new Error("该知识库没有神经树神经元（codified 节点），无法验证");
-    }
-    const verifier = new TreeVerifier({
-      stats: { neurons: neuronNodes.length, synapses: graph.edges.length, endings: 0 },
-      branches,
-      treeEdges: graph.edges.filter((e) => e.kind === "synapse"),
-      crossTreeEdges: graph.edges.filter((e) => e.kind === "hierarchy"),
-      selfCheck: "已由 hank-knowledge 构建",
-    });
-    return verifier.run();
-  }
-
-  /** 触发词命中时联动 codified 节点（供检索链路扩展）。 */
-  async graphAnswer(baseId: string, query: string) {
-    const nodes = await this.deps.graph.findByTrigger(baseId, query);
-    const codified = nodes.filter((n) => n.maturity === "codified");
-    return { nodes: codified, answerKind: codified.length > 0 ? "verdict" : "synthesis" as const };
-  }
-
-  // ---- LLM Wiki ----
-
-  /** 摄入材料到 wiki 层（source/entity/concept 页 + 矛盾检测 + 成熟度评估）。 */
-  async wikiIngest(input: WikiIngestInput): Promise<WikiIngestResult> {
-    await this.deps.store.requireBase(input.baseId);
-    const ingester = new WikiIngester(this.deps.graph, this.deps.getLlm);
-    return ingester.ingest(input);
-  }
-
-  /** Wiki 全库 lint：孤儿页 / 稀疏页 / 成熟度建议。 */
-  async wikiLint(baseId: string) {
-    const graph = await this.deps.graph.load(baseId);
-    const pages = graph.nodes.filter((n) => n.type === "wiki-page" || n.type === "concept" || n.type === "entity");
-    const orphans = pages.filter((n) => n.inbound.length === 0 && n.outbound.length === 0);
-    const sparse = pages.filter((n) => (n.elements?.definition?.length ?? 0) < 20);
-    const suggestions = pages.map((node) => ({ node, eval: evaluateMaturity(node) }))
-      .filter(({ eval: e }) => e.reasons.length > 0);
-    return {
-      pageCount: pages.length,
-      orphans: orphans.map((n) => n.title),
-      sparse: sparse.map((n) => n.title),
-      maturitySuggestions: suggestions.map(({ node, eval: s }) => ({ nodeId: s.nodeId, title: node.title, suggested: s.suggested, reasons: s.reasons })),
-    };
   }
 
   // ---- 材料 ----
@@ -542,6 +385,27 @@ export class KnowledgeService {
     return { text: buffer.toString("utf8"), item };
   }
 
+  // ---- 简单 Wiki ----
+
+  /** 摄入材料 → 生成摘要页。 */
+  async wikiIngest(input: WikiIngestInput): Promise<WikiIngestResult> {
+    await this.deps.store.requireBase(input.baseId);
+    const wiki = new Wiki(this.deps.store);
+    return wiki.ingest(input);
+  }
+
+  /** 列出 wiki 页。 */
+  async wikiList(baseId: string) {
+    const wiki = new Wiki(this.deps.store);
+    return wiki.list(baseId);
+  }
+
+  /** 读取 wiki 页。 */
+  async wikiRead(baseId: string, slug: string) {
+    const wiki = new Wiki(this.deps.store);
+    return wiki.read(baseId, slug);
+  }
+
   // ---- 内部 ----
 
   private async defaultDocumentCount(): Promise<number> {
@@ -564,21 +428,4 @@ export function sanitizeFilename(name: string): string {
     .trim()
     .slice(0, 200);
   return cleaned === "." || cleaned === ".." ? "" : cleaned;
-}
-
-/** 按 tag（主干主题）将神经元节点聚类为验证用分支。 */
-function clusterNeuronsByTag(nodes: GraphNode[]): Array<{ index: number; title: string; neurons: GraphNode[] }> {
-  const byTag = new Map<string, GraphNode[]>();
-  for (const node of nodes) {
-    const tags = node.elements?.tags ?? [];
-    const primary = tags[0] ?? "未分类";
-    const list = byTag.get(primary) ?? [];
-    list.push(node);
-    byTag.set(primary, list);
-  }
-  return [...byTag.entries()].map(([title, neurons], index) => ({
-    index: index + 1,
-    title,
-    neurons,
-  }));
 }

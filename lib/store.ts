@@ -453,31 +453,6 @@ export class KnowledgeStore {
     }
     return files;
   }
-
-  // ---- 知识图谱 ----
-
-  /** 读取知识库图谱（不存在返回 null）。 */
-  async readGraph(baseIdValue: string): Promise<Record<string, unknown> | null> {
-    return this.readJson<Record<string, unknown> | null>(this.graphPath(baseIdValue), null);
-  }
-
-  /** 写入知识库图谱（原子替换）。 */
-  async writeGraph(baseIdValue: string, graph: unknown): Promise<void> {
-    await this.writeJsonAtomic(this.graphPath(baseIdValue), graph);
-  }
-
-  /** 删除知识库图谱（删库时）。 */
-  async deleteGraph(baseIdValue: string): Promise<void> {
-    try {
-      await unlink(this.graphPath(baseIdValue));
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    }
-  }
-
-  private graphPath(baseIdValue: string): string {
-    return join(this.baseDir(baseIdValue), "graph.json");
-  }
 }
 
 export function hashText(text: string): string {

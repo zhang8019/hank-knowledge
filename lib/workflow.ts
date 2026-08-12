@@ -267,10 +267,9 @@ export class KnowledgeWorkflow {
     }
     const buffer = await store.readRawFile(item.baseId, relativePath);
 
-    // 二进制格式：若已转换（indexedRelativePath 指向 converted/*.md）则直接读，
-    // 否则尝试 MinerU 转换（autoConvert），转换产物落盘 converted/{itemId}.md。
+    // 二进制格式（PDF/Office/图片）：优先读已转换缓存，否则走 MinerU
     if (!isTextLike(relativePath)) {
-      const converted = await this.ensureConverted(item, relativePath, buffer);
+      const converted = await this.ensureMineruConverted(item, relativePath, buffer);
       return { text: converted };
     }
 
@@ -280,7 +279,7 @@ export class KnowledgeWorkflow {
   }
 
   /** MinerU 转换：命中缓存或调用 API，产物写 raw/converted/{itemId}.md。 */
-  private async ensureConverted(
+  private async ensureMineruConverted(
     item: KnowledgeItem,
     sourcePath: string,
     buffer: Buffer,

@@ -9,10 +9,8 @@
  */
 
 import { EmbeddingClient } from "./embedding";
-import { KnowledgeGraph } from "./graph";
 import { MemoryIndex } from "./index";
 import { KnowledgeService } from "./knowledge";
-import { LlmClient } from "./llm";
 import { MineruClient } from "./mineru";
 import { RerankClient } from "./rerank";
 import { KnowledgeStore } from "./store";
@@ -23,7 +21,6 @@ export interface RuntimeBundle {
   ctx: HanaPluginContext;
   store: KnowledgeStore;
   index: MemoryIndex;
-  graph: KnowledgeGraph;
   workflow: KnowledgeWorkflow;
   service: KnowledgeService;
 }
@@ -39,7 +36,6 @@ function globalAny(): Record<string, unknown> {
 export function initRuntime(ctx: HanaPluginContext): RuntimeBundle {
   const store = new KnowledgeStore(ctx.dataDir);
   const index = new MemoryIndex();
-  const graph = new KnowledgeGraph(store);
   const getEmbedding = () => EmbeddingClient.fromConfig(ctx.config, ctx.network);
   const getRerank = () => RerankClient.fromConfig(ctx.config, ctx.network);
   const getMineru = () => MineruClient.fromConfig(ctx.config, ctx.network);
@@ -51,20 +47,17 @@ export function initRuntime(ctx: HanaPluginContext): RuntimeBundle {
     network: ctx.network,
     log: ctx.log,
   });
-  const getLlm = () => LlmClient.fromConfig(ctx.config, ctx.network);
   const service = new KnowledgeService({
     store,
     index,
-    graph,
     workflow,
     getEmbedding,
     getRerank,
-    getLlm,
     network: ctx.network,
     config: ctx.config,
     log: ctx.log,
   });
-  const bundle: RuntimeBundle = { ctx, store, index, graph, workflow, service };
+  const bundle: RuntimeBundle = { ctx, store, index, workflow, service };
   globalAny()[globalSlot(ctx.pluginId)] = bundle;
   return bundle;
 }

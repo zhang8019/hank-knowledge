@@ -130,7 +130,9 @@ export class MineruClient {
     }
     const ext = extensionOf(filename);
     const isPdf = ext === "pdf";
-    const useStandard: boolean = Boolean(this.config.apiKey) && buffer.byteLength > AGENT_MAX_BYTES;
+    // 配了 Token 优先走精准 API（页数上限 200、支持批量）；无 Token 才用 Agent 轻量 API（20 页）。
+    // 仅当文件 >10MB 且无 Token 时才报 Agent 大小超限。
+    const useStandard: boolean = Boolean(this.config.apiKey) || buffer.byteLength > AGENT_MAX_BYTES;
 
     // ---- 大小超限检查 ----
     if (useStandard) {
@@ -397,9 +399,10 @@ export class MineruClient {
 
   private async putBuffer(url: string, buffer: Uint8Array): Promise<void> {
     try {
+      // MinerU OSS 预签名 URL 未将 Content-Type 计入签名，带该头会导致
+      // SignatureDoesNotMatch(403)。上传时不能设置 Content-Type。
       const response = await this.network.fetch(url, {
         method: "PUT",
-        headers: { "Content-Type": "application/octet-stream" },
         body: buffer,
         timeoutMs: 120_000,
       });

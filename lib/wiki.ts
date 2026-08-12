@@ -1,241 +1,120 @@
 /**
- * LLM Wiki ingest 工作流。
+ * 简单 Wiki（v3）：摄入材料 → 生成 Markdown 摘要页。
  *
- * 摄入一份材料 → 在知识图谱中建立 wiki 层：
- *   source 页：材料摘要页（fuzzy）
- *   concept 页：抽取的关键概念（fuzzy，可多源引用 → emerging）
- *   entity 页：抽取的实体（人名/公司/项目）
- * 并维护 index / log / overview（确定性生成），检测矛盾，评估成熟度。
+ * 不引入图谱/成熟度等复杂概念。每个知识库有独立 wiki 目录：
+ *   {dataDir}/bases/{baseId}/wiki/
+ *     index.md        所有页面的索引
+ *     {slug}.md       每份材料的摘要页（来源/要点/关键词）
  *
- * LLM 可选：配置 llm 后用于摘要/概念抽取/矛盾语义检测；
- * 未配置 → 确定性算法（高频关键词抽取 + 相似度矛盾检测），无 LLM 也能运行。
+ * 纯确定性摘要（高频关键词 + 首段），零外部依赖。
  */
 
 import { normalizeText } from "./chunker";
-import { KnowledgeGraph, GraphNode, NodeMaturity } from "./graph";
-import { conceptName, entityName, sourceSlug } from "./naming";
 import { tokenize } from "./tokenizer";
-import type { LlmClient } from "./llm";
-import { evaluateMaturity } from "./maturity";
+import type { KnowledgeStore } from "./store";
+import { slugify } from "./ids";
 
 export interface WikiIngestInput {
   baseId: string;
-  /** 材料 itemId（溯源）。 */
+  /** 材料 itemId。 */
   itemId: string;
-  /** 材料名（source 页命名）。 */
+  /** 材料名。 */
   itemName: string;
   /** 材料全文。 */
   text: string;
-  /** 是否运行 LLM 增强（默认：有配置则用）。 */
-  useLlm?: boolean;
 }
 
 export interface WikiIngestResult {
-  sourceNode: GraphNode;
-  conceptNodes: GraphNode[];
-  entityNodes: GraphNode[];
-  indexLines: string[];
-  contradictions: Array<{ source: string; target: string; detail: string }>;
-  maturitySuggestions: Array<{ nodeId: string; title: string; suggested: NodeMaturity; reasons: string[] }>;
-  usedLlm: boolean;
+  slug: string;
+  title: string;
+  filePath: string;
+  summary: string;
+  keywords: string[];
 }
 
-interface ExtractedConcepts {
-  concepts: Array<{ title: string; definition: string }>;
-  entities: Array<{ title: string; description: string }>;
-}
+export class Wiki {
+  constructor(private readonly store: KnowledgeStore) {}
 
-export class WikiIngester {
-  constructor(
-    private readonly graph: KnowledgeGraph,
-    private readonly getLlm: () => Promise<LlmClient | null>,
-  ) {}
+  private wikiDir(baseId: string): string {
+    return `wiki`;
+  }
 
+  /** 摄入材料 → 写摘要页 + 更新 index。 */
   async ingest(input: WikiIngestInput): Promise<WikiIngestResult> {
     const text = normalizeText(input.text);
-    if (!text || text.length < 20) throw new Error("材料内容过短，无法摄入");
+    if (!text || text.length < 20) throw new Error("材料内容过短，无法生成摘要");
 
-    const llm = input.useLlm === false ? null : await this.getLlm();
-    const usedLlm = llm !== null;
+    const summary = this.summarizeDeterministic(text);
+    const keywords = this.extractKeywords(text, 8);
 
-    // 1) source 页
-    const sourceNode = await this.graph.addNode(input.baseId, {
-      title: sourceSlug(input.itemName),
-      type: "wiki-page",
-      maturity: "fuzzy",
-      sourceRefs: [input.itemId],
-      elements: {
-        definition: await this.summarize(text, llm),
-        scenario: "材料来源页",
-        keyData: text.slice(0, 200),
-        triggers: this.extractTriggers(text),
-        tags: ["#wiki/source"],
-        source: `材料 ${input.itemName}`,
-      },
-    });
+    const slug = slugify(input.itemName || "material", 40) || "material";
+    const title = input.itemName || "未命名材料";
+    const relDir = `${this.wikiDir(input.baseId)}`;
+    const filePath = `${relDir}/${slug}.md`;
+    const front = [
+      `---`,
+      `title: "${title}"`,
+      `source: ${input.itemId}`,
+      `summary: "${summary.slice(0, 120).replace(/"/g, "'")}"`,
+      `keywords: ${keywords.map((k) => `"${k}"`).join(", ")}`,
+      `created: ${new Date().toISOString().slice(0, 10)}`,
+      `---`,
+      ``,
+      `# ${title}`,
+      ``,
+      `> 来源材料：${input.itemId}`,
+      ``,
+      `## 摘要`,
+      ``,
+      summary,
+      ``,
+      `## 关键词`,
+      ``,
+      keywords.map((k) => `- ${k}`).join("\n"),
+      ``,
+    ].join("\n");
+    await this.store.writeRawFile(input.baseId, filePath, front);
+    await this.updateIndex(input.baseId, slug, title, summary);
 
-    // 2) concept / entity 抽取
-    const extracted = llm ? await this.extractWithLlm(llm, text) : this.extractDeterministic(text);
-    const conceptNodes: GraphNode[] = [];
-    const entityNodes: GraphNode[] = [];
-    for (const concept of extracted.concepts) {
-      const existing = await this.findNodeByTitle(input.baseId, concept.title, "concept");
-      if (existing) {
-        // 多源引用：追加 sourceRef → 可能升级 emerging
-        const refs = Array.from(new Set([...(existing.sourceRefs ?? []), input.itemId]));
-        const node = await this.graph.updateNode(input.baseId, existing.id, {
-          sourceRefs: refs,
-          elements: { ...existing.elements, definition: concept.definition || existing.elements?.definition },
-        });
-        conceptNodes.push(node);
-      } else {
-        conceptNodes.push(await this.graph.addNode(input.baseId, {
-          title: conceptName(concept.title),
-          type: "concept",
-          maturity: "fuzzy",
-          sourceRefs: [input.itemId],
-          elements: { definition: concept.definition, scenario: "概念页", triggers: this.extractTriggers(concept.title) },
-        }));
-      }
+    return { slug, title, filePath, summary, keywords };
+  }
+
+  /** 列出全部 wiki 页。 */
+  async list(baseId: string): Promise<Array<{ slug: string; title: string }>> {
+    const indexPath = `${this.wikiDir(baseId)}/index.md`;
+    if (!(await this.store.rawFileExists(baseId, indexPath))) return [];
+    const raw = (await this.store.readRawFile(baseId, indexPath)).toString("utf8");
+    const pages: Array<{ slug: string; title: string }> = [];
+    for (const line of raw.split("\n")) {
+      const m = line.match(/^\[(.+)\]\((.+)\)/);
+      if (m) pages.push({ title: m[1], slug: m[2].replace(/\.md$/, "") });
     }
-    for (const entity of extracted.entities) {
-      const existing = await this.findNodeByTitle(input.baseId, entity.title, "entity");
-      if (existing) {
-        const refs = Array.from(new Set([...(existing.sourceRefs ?? []), input.itemId]));
-        entityNodes.push(await this.graph.updateNode(input.baseId, existing.id, { sourceRefs: refs }));
-      } else {
-        entityNodes.push(await this.graph.addNode(input.baseId, {
-          title: entityName(entity.title),
-          type: "entity",
-          maturity: "fuzzy",
-          sourceRefs: [input.itemId],
-          elements: { definition: entity.description, scenario: "实体页" },
-        }));
-      }
-    }
-
-    // 3) 矛盾检测（语义 → LLM；否则相似度）
-    const contradictions = llm
-      ? await this.detectContradictionsLlm(llm, text, [...conceptNodes, ...entityNodes])
-      : this.detectContradictionsDeterministic(text, [...conceptNodes, ...entityNodes]);
-
-    // 4) 成熟度评估
-    const allNodes = [sourceNode, ...conceptNodes, ...entityNodes];
-    const maturitySuggestions = allNodes.map((node) => {
-      const evalResult = evaluateMaturity(node);
-      return { nodeId: node.id, title: node.title, suggested: evalResult.suggested, reasons: evalResult.reasons };
-    });
-
-    const indexLines = this.buildIndexLines([sourceNode, ...conceptNodes, ...entityNodes]);
-
-    return {
-      sourceNode,
-      conceptNodes,
-      entityNodes,
-      indexLines,
-      contradictions,
-      maturitySuggestions,
-      usedLlm,
-    };
+    return pages;
   }
 
-  // ---- source 摘要 ----
-
-  private async summarize(text: string, llm: LlmClient | null): Promise<string> {
-    if (llm) {
-      try {
-        const summary = await llm.chat(
-          "你是知识库 Wiki 摘要助手。用 2-4 句话概括材料核心内容，中文输出。",
-          text.slice(0, 6000),
-          { maxTokens: 200 },
-        );
-        if (summary) return summary.slice(0, 200);
-      } catch {
-        // LLM 失败降级为确定性
-      }
-    }
-    const tokens = this.topTokens(text, 6);
-    return `材料要点：${tokens.join("、")}。${text.slice(0, 60)}`;
+  /** 读取单个 wiki 页全文。 */
+  async read(baseId: string, slug: string): Promise<string | null> {
+    const filePath = `${this.wikiDir(baseId)}/${slug}.md`;
+    if (!(await this.store.rawFileExists(baseId, filePath))) return null;
+    return (await this.store.readRawFile(baseId, filePath)).toString("utf8");
   }
 
-  // ---- 概念/实体抽取 ----
-
-  private async extractWithLlm(llm: LlmClient, text: string): Promise<ExtractedConcepts> {
-    try {
-      const result = await llm.chatJson<ExtractedConcepts>(
-        "你是知识库 Wiki 抽取器。从材料中提取核心概念与实体。返回 JSON：{concepts:[{title,definition}],entities:[{title,description}]}。title 用中文短词。",
-        text.slice(0, 6000),
-        { maxTokens: 800 },
-      );
-      return {
-        concepts: (result.concepts ?? []).slice(0, 6).filter((c) => c.title && c.title.trim()),
-        entities: (result.entities ?? []).slice(0, 4).filter((e) => e.title && e.title.trim()),
-      };
-    } catch {
-      return this.extractDeterministic(text);
-    }
+  private async updateIndex(baseId: string, slug: string, title: string, summary: string): Promise<void> {
+    const indexPath = `${this.wikiDir(baseId)}/index.md`;
+    const existing = (await this.store.rawFileExists(baseId, indexPath))
+      ? (await this.store.readRawFile(baseId, indexPath)).toString("utf8")
+      : "# Wiki 索引\n\n";
+    if (existing.includes(`](${slug}.md)`)) return;
+    const line = `- [${title}](${slug}.md) — ${summary.slice(0, 60)}`;
+    await this.store.writeRawFile(baseId, indexPath, existing + line + "\n");
   }
 
-  private extractDeterministic(text: string): ExtractedConcepts {
-    const tokens = this.topTokens(text, 10);
-    const concepts = tokens.slice(0, 4).map((title) => ({ title, definition: `材料中高频概念 ${title}` }));
-    return { concepts, entities: [] };
+  private summarizeDeterministic(text: string): string {
+    const tokens = this.extractKeywords(text, 6);
+    return `材料要点：${tokens.join("、")}。\n\n${text.slice(0, 200)}${text.length > 200 ? "…" : ""}`;
   }
 
-  // ---- 矛盾检测 ----
-
-  private async detectContradictionsLlm(
-    llm: LlmClient,
-    text: string,
-    nodes: GraphNode[],
-  ): Promise<WikiIngestResult["contradictions"]> {
-    if (nodes.length === 0) return [];
-    const candidates = nodes
-      .map((n) => `${n.title}：${n.elements?.definition ?? ""}`)
-      .join("\n");
-    try {
-      const result = await llm.chatJson<{ contradictions: Array<{ target: string; detail: string }> }>(
-        "检查新材料与现有概念/实体页是否矛盾。返回 JSON：{contradictions:[{target,detail}]}，无矛盾返回空数组。",
-        `新材料片段：\n${text.slice(0, 3000)}\n\n现有页面：\n${candidates}`,
-        { maxTokens: 500 },
-      );
-      return (result.contradictions ?? [])
-        .filter((c) => c.target && c.detail)
-        .map((c) => ({ source: "新材料", target: c.target, detail: c.detail }));
-    } catch {
-      return this.detectContradictionsDeterministic(text, nodes);
-    }
-  }
-
-  private detectContradictionsDeterministic(text: string, nodes: GraphNode[]): WikiIngestResult["contradictions"] {
-    const tokens = new Set(tokenize(text));
-    const result: WikiIngestResult["contradictions"] = [];
-    for (const node of nodes) {
-      const nodeTokens = new Set(tokenize(node.title + " " + (node.elements?.definition ?? "")));
-      const overlap = [...tokens].filter((t) => nodeTokens.has(t)).length;
-      // 词重叠高但内容长短差异大 → 可能冲突（简化启发式）
-      const nodeLen = (node.elements?.definition ?? "").length;
-      if (overlap >= 3 && nodeLen < 10) {
-        result.push({ source: "新材料", target: node.title, detail: "概念内容过短且主题重叠，可能冲突或需补充" });
-      }
-    }
-    return result;
-  }
-
-  // ---- 工具 ----
-
-  private async findNodeByTitle(baseId: string, title: string, type: "concept" | "entity"): Promise<GraphNode | null> {
-    const graph = await this.graph.load(baseId);
-    const normalized = conceptName(title);
-    return graph.nodes.find((n) => n.type === type && n.title === normalized) ?? null;
-  }
-
-  private extractTriggers(text: string): string[] {
-    const tokens = this.topTokens(text, 8);
-    return Array.from(new Set(tokens));
-  }
-
-  private topTokens(text: string, limit: number): string[] {
+  private extractKeywords(text: string, limit: number): string[] {
     const freq = new Map<string, number>();
     for (const token of tokenize(text)) {
       if (token.length < 2) continue;
@@ -245,9 +124,5 @@ export class WikiIngester {
       .sort((a, b) => b[1] - a[1])
       .slice(0, limit)
       .map(([token]) => token);
-  }
-
-  private buildIndexLines(nodes: GraphNode[]): string[] {
-    return nodes.map((n) => `- [${n.title}](${n.type}, ${n.maturity}, 来源 ${n.sourceRefs.length})`);
   }
 }
