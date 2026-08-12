@@ -196,6 +196,42 @@ export default function registerKnowledgePageRoutes(app: any, _ctx: any): void {
     const chunks = await bundle.service.listItemChunks(c.req.param("id"), c.req.param("itemId"));
     return { chunks };
   }));
+
+  // ---- 简单 Wiki ----
+  app.get("/api/bases/:id/wiki", handler(async (bundle, c) => {
+    const pages = await bundle.service.wikiList(c.req.param("id"));
+    return { pages };
+  }));
+
+  app.get("/api/bases/:id/wiki/:slug", handler(async (bundle, c) => {
+    const text = await bundle.service.wikiRead(c.req.param("id"), c.req.param("slug"));
+    if (text === null) throw new Error("Wiki 页不存在");
+    return { text };
+  }));
+
+  app.post("/api/bases/:id/wiki-ingest", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.text !== "string" || !body.text.trim()) throw new Error("缺少 text（材料内容）");
+    const result = await bundle.service.wikiIngest({
+      baseId: c.req.param("id"),
+      itemId: typeof body.itemId === "string" ? body.itemId : "manual",
+      itemName: typeof body.itemName === "string" && body.itemName ? body.itemName : "未命名材料",
+      text: body.text,
+    });
+    return { result };
+  }));
+
+  // UI 兼容：POST /api/bases/:id/delete 与 /rename（管理界面用 apiPost 调用）
+  app.post("/api/bases/:id/delete", handler(async (bundle, c) => {
+    await bundle.service.deleteBase(c.req.param("id"));
+    return { ok: true };
+  }));
+
+  app.post("/api/bases/:id/rename", handler(async (bundle, c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.name !== "string") throw new Error("缺少 name 字段");
+    return { base: await bundle.service.renameBase(c.req.param("id"), body.name) };
+  }));
 }
 
 // ================= 页面渲染 =================
@@ -242,59 +278,78 @@ function renderShell(c: any): string {
 }
 
 const PAGE_CSS = `
+:root {
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --border: #e5e9f2;
+  --text: #1f2937;
+  --text-dim: #6b7280;
+  --accent: #4f8ef7;
+  --accent-soft: #eef4ff;
+  --ok: #10b981;
+  --busy: #f59e0b;
+  --err: #ef4444;
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.04);
+}
 * { box-sizing: border-box; }
-body { margin: 0; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #2d2a24; background: #f6f5f1; }
+body { margin: 0; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--bg); }
 .app { display: flex; flex-direction: column; min-height: 100vh; }
-.top { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; background: #fffdf8; border-bottom: 1px solid #e6e2d8; }
-.top h1 { font-size: 16px; margin: 0; }
-.layout { display: flex; gap: 14px; padding: 14px; flex: 1; }
-.side { width: 250px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+.top { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.top h1 { font-size: 16px; margin: 0; font-weight: 600; }
+.layout { display: flex; gap: 16px; padding: 16px; flex: 1; max-width: 1280px; margin: 0 auto; width: 100%; }
+.side { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
 .main { flex: 1; min-width: 0; }
-.card { background: #fffdf8; border: 1px solid #e6e2d8; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
-.card h2 { margin: 0 0 10px; font-size: 14px; }
-.card h3 { margin: 0 0 8px; font-size: 14px; }
-.input { width: 100%; padding: 8px 10px; border: 1px solid #e6e2d8; border-radius: 8px; background: #fff; font-size: 13px; margin-bottom: 8px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.card h2 { margin: 0 0 12px; font-size: 13px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.card h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: #f9fafb; font-size: 13px; margin-bottom: 8px; color: var(--text); }
+.input:focus { outline: none; border-color: var(--accent); background: #fff; }
 textarea.input { resize: vertical; font-family: inherit; }
-.btn { padding: 7px 12px; border: 1px solid #e6e2d8; border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; }
-.btn:hover { border-color: #537d96; }
-.btn.primary { background: #537d96; border-color: #537d96; color: #fff; }
-.btn.danger { color: #b3543c; }
-.btn.tiny { padding: 3px 8px; font-size: 12px; }
+.btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; color: var(--text); transition: all .15s; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.btn.primary:hover { background: #3d7ee8; color: #fff; }
+.btn.danger { color: var(--err); }
+.btn.danger:hover { border-color: var(--err); color: var(--err); }
+.btn.tiny { padding: 3px 10px; font-size: 12px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.check { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #8a857a; margin: 6px 0; }
+.check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); margin: 6px 0; }
 .row { display: flex; align-items: center; gap: 8px; }
 .row.between { justify-content: space-between; }
 .row.wrap { flex-wrap: wrap; }
 .grow { flex: 1; }
-.muted { color: #8a857a; font-size: 12px; }
+.muted { color: var(--text-dim); font-size: 12px; }
 .list { display: flex; flex-direction: column; gap: 6px; }
-.list-item { text-align: left; padding: 9px 11px; border: 1px solid #e6e2d8; border-radius: 8px; background: #fff; cursor: pointer; }
-.list-item.selected { border-color: #537d96; background: #eef3f6; }
+.list-item { text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; cursor: pointer; transition: all .15s; }
+.list-item:hover { border-color: var(--accent); }
+.list-item.selected { border-color: var(--accent); background: var(--accent-soft); }
 .list-item .name { font-weight: 600; font-size: 13px; }
-.list-item .meta { font-size: 12px; color: #8a857a; margin-top: 2px; }
-.badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid #e6e2d8; }
-.badge.ok { color: #4f7d5a; border-color: #4f7d5a; }
-.badge.err { color: #b3543c; border-color: #b3543c; }
-.badge.busy { color: #b08a3e; border-color: #b08a3e; }
-.badge.muted { color: #8a857a; }
-.empty { color: #8a857a; font-size: 13px; padding: 24px 0; text-align: center; }
-.item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #e6e2d8; border-radius: 8px; margin-bottom: 6px; }
+.list-item .meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.badge { padding: 2px 9px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); color: var(--text-dim); white-space: nowrap; }
+.badge.ok { color: var(--ok); border-color: var(--ok); background: rgba(16,185,129,.08); }
+.badge.err { color: var(--err); border-color: var(--err); background: rgba(239,68,68,.08); }
+.badge.busy { color: var(--busy); border-color: var(--busy); background: rgba(245,158,11,.08); }
+.badge.muted { color: var(--text-dim); }
+.empty { color: var(--text-dim); font-size: 13px; padding: 32px 0; text-align: center; }
+.item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 6px; background: #fff; transition: box-shadow .15s; }
+.item:hover { box-shadow: var(--shadow); }
 .item.child { margin-left: 26px; }
 .item .info { flex: 1; min-width: 0; }
 .item .name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.item .err { font-size: 11px; color: #b3543c; }
-.result { border: 1px solid #e6e2d8; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+.item .err { font-size: 11px; color: var(--err); }
+.result { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 8px; background: #fff; }
 .result .head { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
-.result .rank { color: #537d96; font-weight: 700; }
-.result .text { margin-top: 5px; font-size: 12px; color: #55503f; line-height: 1.6; }
-.toast { position: fixed; top: 14px; right: 14px; background: #333; color: #fff; padding: 9px 14px; border-radius: 8px; font-size: 13px; z-index: 50; }
+.result .rank { color: var(--accent); font-weight: 700; }
+.result .text { margin-top: 6px; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+.toast { position: fixed; top: 16px; right: 16px; background: #1f2937; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
 .detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.kv { font-size: 12px; color: #55503f; }
-.kv b { color: #2d2a24; }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 40; }
-.modal { background: #fff; border-radius: 12px; padding: 16px; width: min(720px, 92vw); max-height: 82vh; display: flex; flex-direction: column; }
-.modal pre { flex: 1; overflow: auto; font-size: 12px; line-height: 1.7; white-space: pre-wrap; font-family: inherit; margin: 8px 0 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.kv { font-size: 12px; color: var(--text-dim); }
+.kv b { color: var(--text); }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 40; }
+.modal { background: #fff; border-radius: 14px; padding: 18px; width: min(720px, 92vw); max-height: 82vh; display: flex; flex-direction: column; box-shadow: 0 16px 48px rgba(0,0,0,.2); }
+.modal pre { flex: 1; overflow: auto; font-size: 12px; line-height: 1.7; white-space: pre-wrap; font-family: inherit; margin: 8px 0 0; color: var(--text-dim); }
 `;
 
 // 注意：字符串中的 <\/script> 转义是为了防止闭合外层 HTML 脚本块
@@ -454,16 +509,16 @@ const PAGE_SCRIPT = `
         '<div class="row"><input class="input grow" id="searchInput" placeholder="输入检索词…" style="margin:0"><button class="btn primary" id="searchBtn">检索</button></div>' +
         '<div id="results" style="margin-top:10px"></div>' +
       '</div>' +
-      '<div class="card"><h3>材料</h3><div id="itemList"></div></div>';
+      '<div class="card"><h3>材料</h3><div id="itemList"></div></div>' +
+      '<div class="card"><h3>🧠 Wiki 摘要</h3><div id="wikiList"></div></div>';
 
     const baseId = base.id;
-    $("createBaseBtn").disabled = true;
     $("renameBtn").addEventListener("click", async () => {
-      const name = prompt("新名称", base.name);
+      const name = await promptDialog("新名称", base.name);
       if (name) { try { await apiPost("api/bases/" + baseId + "/rename", { name }); notify("已重命名"); await refresh(); } catch (e) { notify(e.message); } }
     });
     $("reindexAllBtn").addEventListener("click", async () => {
-      if (!confirm("重建全部材料的索引？")) return;
+      if (!(await confirmDialog("重建全部材料的索引？"))) return;
       try { await apiPost("api/bases/" + baseId + "/reindex", {}); notify("已开始重建全部索引"); } catch (e) { notify(e.message); }
     });
     if ($("enableEmbeddingBtn")) $("enableEmbeddingBtn").addEventListener("click", async () => {
@@ -476,7 +531,7 @@ const PAGE_SCRIPT = `
       try { await apiPost("api/bases/" + baseId + "/disable-rerank", {}); notify("已关闭重排序"); await refresh(); } catch (e) { notify(e.message); }
     });
     $("deleteBaseBtn").addEventListener("click", async () => {
-      if (!confirm("确认永久删除知识库「" + base.name + "」及其全部材料？")) return;
+      if (!(await confirmDialog("确认永久删除知识库「" + base.name + "」及其全部材料？"))) return;
       try { await apiPost("api/bases/" + baseId + "/delete", {}); state.selectedId = null; notify("知识库已删除"); await refresh(); } catch (e) { notify(e.message); }
     });
     $("uploadBtn").addEventListener("click", () => $("fileInput").click());
@@ -493,12 +548,12 @@ const PAGE_SCRIPT = `
       $("fileInput").value = "";
     });
     $("addUrlBtn").addEventListener("click", async () => {
-      const url = prompt("网页地址（https://…）");
+      const url = await promptDialog("网页地址（https://…）");
       if (!url) return;
       try { await apiPost("api/bases/" + baseId + "/url", { url }); notify("已添加 URL，正在后台抓取快照"); } catch (e) { notify(e.message); }
     });
     $("addNoteBtn").addEventListener("click", async () => {
-      const content = prompt("笔记内容");
+      const content = await promptDialog("笔记内容");
       if (!content) return;
       try { await apiPost("api/bases/" + baseId + "/note", { content }); notify("已添加笔记，正在后台索引"); } catch (e) { notify(e.message); }
     });
@@ -506,6 +561,7 @@ const PAGE_SCRIPT = `
     $("searchInput").addEventListener("keydown", (event) => { if (event.key === "Enter") runSearch(); });
 
     renderItems();
+    renderWiki();
   }
 
   async function runSearch() {
@@ -548,12 +604,35 @@ const PAGE_SCRIPT = `
     });
   }
 
+  async function renderWiki() {
+    const list = $("wikiList");
+    if (!list) return;
+    try {
+      const body = await apiGet("api/bases/" + state.selectedId + "/wiki");
+      const pages = body.pages || [];
+      if (!pages.length) { list.innerHTML = '<div class="empty">还没有 Wiki 页。材料索引完成后可用 knowledge_wiki_ingest 生成。</div>'; return; }
+      list.innerHTML = pages.map((p) =>
+        '<div class="item"><span>📄</span><div class="info"><div class="name">' + escapeHtml(p.title) + '</div></div>' +
+        '<button class="btn tiny" data-wiki="' + escapeHtml(p.slug) + '">查看</button></div>'
+      ).join("");
+      list.querySelectorAll("button[data-wiki]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          try {
+            const r = await apiGet("api/bases/" + state.selectedId + "/wiki/" + btn.dataset.wiki);
+            showModal(btn.dataset.wiki, r.text || "无内容");
+          } catch (e) { notify(e.message); }
+        });
+      });
+    } catch { list.innerHTML = '<div class="empty">Wiki 加载失败</div>'; }
+  }
+
   function itemActions(item) {
     const baseId = state.selectedId;
     const actions = [];
     if (item.status === "completed") {
       actions.push('<button class="btn tiny" data-action="view" data-item="' + item.id + '">查看</button>');
       actions.push('<button class="btn tiny" data-action="reindex" data-item="' + item.id + '">重建</button>');
+      actions.push('<button class="btn tiny" data-action="wiki" data-item="' + item.id + '">生成 Wiki</button>');
     }
     if (item.status === "failed") {
       actions.push('<button class="btn tiny" data-action="retry" data-item="' + item.id + '">重试</button>');
@@ -574,7 +653,7 @@ const PAGE_SCRIPT = `
         return;
       }
       if (action === "delete") {
-        if (!confirm("删除该材料？")) return;
+        if (!(await confirmDialog("删除该材料？"))) return;
         await apiPost("api/bases/" + baseId + "/delete-items", { itemIds: [itemId] });
         notify("已开始删除");
       } else if (action === "retry") {
@@ -586,6 +665,15 @@ const PAGE_SCRIPT = `
       } else if (action === "refresh") {
         await apiPost("api/bases/" + baseId + "/refresh-url/" + itemId, {});
         notify("已开始刷新快照");
+      } else if (action === "wiki") {
+        const body = await apiGet("api/bases/" + baseId + "/item/" + itemId);
+        const result = await apiPost("api/bases/" + baseId + "/wiki-ingest", {
+          itemId,
+          itemName: body.item?.title || "材料",
+          text: body.text || "",
+        });
+        notify("已生成 Wiki 摘要页「" + (result.result?.title || itemId) + "」");
+        renderWiki();
       }
     } catch (err) {
       notify(err.message);
@@ -599,6 +687,51 @@ const PAGE_SCRIPT = `
     overlay.addEventListener("click", (event) => { if (event.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
     overlay.querySelector("#closeModal").addEventListener("click", () => overlay.remove());
+  }
+
+  /** 自定义确认框（替代 confirm，兼容 Hana iframe 沙箱）。返回 Promise<boolean>。 */
+  function confirmDialog(message) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.className = "modal-backdrop";
+      overlay.innerHTML =
+        '<div class="modal" style="width:min(420px,92vw)">' +
+          '<p style="margin:0 0 16px;font-size:14px;color:var(--text);line-height:1.6">' + escapeHtml(message) + '</p>' +
+          '<div class="row" style="justify-content:flex-end">' +
+            '<button class="btn" id="dgNo">取消</button>' +
+            '<button class="btn danger" id="dgYes" style="margin-left:8px">确认</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      const close = (val) => { overlay.remove(); resolve(val); };
+      overlay.querySelector("#dgYes").addEventListener("click", () => close(true));
+      overlay.querySelector("#dgNo").addEventListener("click", () => close(false));
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(false); });
+    });
+  }
+
+  /** 自定义输入框（替代 prompt）。返回 Promise<string|null>（取消=null）。 */
+  function promptDialog(message, defaultValue) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.className = "modal-backdrop";
+      overlay.innerHTML =
+        '<div class="modal" style="width:min(440px,92vw)">' +
+          '<p style="margin:0 0 12px;font-size:14px;color:var(--text)">' + escapeHtml(message) + '</p>' +
+          '<input id="dgInput" class="input" value="' + escapeHtml(String(defaultValue || "")) + '">' +
+          '<div class="row" style="justify-content:flex-end;margin-top:12px">' +
+            '<button class="btn" id="dgNo">取消</button>' +
+            '<button class="btn primary" id="dgYes" style="margin-left:8px">确定</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      const close = (val) => { overlay.remove(); resolve(val); };
+      overlay.querySelector("#dgYes").addEventListener("click", () => close(overlay.querySelector("#dgInput").value));
+      overlay.querySelector("#dgNo").addEventListener("click", () => close(null));
+      overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+      overlay.querySelector("#dgInput").focus();
+      overlay.querySelector("#dgInput").addEventListener("keydown", (e) => { if (e.key === "Enter") close(overlay.querySelector("#dgInput").value); });
+    });
   }
 
   function clip(text, max) {
@@ -620,7 +753,20 @@ const PAGE_SCRIPT = `
 
   notifyParent();
   refresh();
-  setInterval(() => { refreshItems().then(renderDetail); }, 3000);
+  // 局部轮询：刷新 base 列表与材料列表，不重建详情区（保持滚动/焦点/事件）
+  setInterval(async () => {
+    try {
+      const [basesBody] = await Promise.all([apiGet("api/bases")]);
+      state.bases = basesBody.bases || [];
+      renderBases();
+      if (state.selectedId) {
+        await refreshItems();
+        renderItems();
+      }
+    } catch {
+      // 静默
+    }
+  }, 3000);
 })();
 `;
 

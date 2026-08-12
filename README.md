@@ -1,6 +1,6 @@
 # hank-knowledge — Hanko Agent 知识库插件
 
-把 Cherry Studio 的知识库体系移植为 Hanko Agent（openhanako）插件：**管理化材料库**（导入即快照、生命周期状态机、后台异步索引），默认 BM25 全文检索，可配置 embedding 升级为向量 / 混合检索（RRF 融合），可配置 rerank 精排。
+把 Cherry Studio 的知识库体系移植为 Hanko Agent（openhanako）插件：**管理化材料库**（导入即快照、生命周期状态机、后台异步索引），默认 BM25 全文检索，可配置 embedding 升级为向量 / 混合检索（RRF 融合），可配置 rerank 精排；支持 **MinerU 高精度文档解析**与**简单 Wiki 摘要**。
 
 ## 功能
 
@@ -8,10 +8,12 @@
 - **材料类型**：`file`（文件快照）/ `directory`（文件夹导入，保留层级）/ `url`（网页快照）/ `note`（笔记）
 - **导入即复制**：外部文件的后续修改不影响库内副本；同名冲突自动 `_1` / `_2` 后缀（keep-copy）
 - **生命周期状态机**：`idle → preparing → processing → reading → embedding → completed / failed / deleting`，UI 与工具全部基于业务状态，不扫描文件系统
+- **MinerU 文档解析**：导入 PDF / Office / 图片时自动调用 MinerU 转为 Markdown 再索引（Agent 可直接阅读），产物落盘缓存；未配置时二进制文件标记"需转换"
+- **简单 Wiki**：把材料摄入为 Markdown 摘要页（关键词 + 要点），UI 展示 Wiki 摘要列表
 - **检索**：BM25（中文 bigram + 英文词，默认）→ 配置 embedding 后混合检索（BM25 + 向量，RRF 融合）→ 配置 rerank 后对候选片段精排（`relevance` 分数 + 阈值过滤）；返回 `pageContent / score / scoreKind / rank / chunkId / itemId`
 - **异步工作流**：建库 / 添加 / 删除 / 重建索引均"接受即返回"，索引在后台按库串行执行；插件重启后自动恢复未完成任务
-- **Agent 工具**：建库、增删材料、搜索、读取、查看 chunk、重试失败项
-- **管理界面**：插件页面 / 小组件（`/page`、`/widget`）全内联 HTML（中文），提供建库、上传、命中测试、状态监控，零外部资源请求
+- **Agent 工具**：建库、增删材料、搜索、读取、查看 chunk、重试失败项、Wiki 摄入
+- **管理界面**：插件页面 / 小组件（`/page`、`/widget`）全内联 HTML（中文），提供建库、上传、命中测试、Wiki 摘要、状态监控，零外部资源请求
 
 ## 部署
 
@@ -64,7 +66,29 @@ node --env-file=.env tests/real-models.mjs  # SiliconFlow bge-m3 + bge-reranker 
 
 使用方式：新建知识库勾选"启用向量检索"；对已有库在管理界面点"启用向量"（自动探测维度并全库重建）、"启用重排"（对候选片段精排）。rerank 服务瞬时失败时自动降级为未重排结果，不中断检索。
 
-> **网络白名单**：Hana 插件平台强制 `network.allowedHosts`（manifest 已预置 OpenAI、阿里百炼、硅基流动、智谱、百度千帆、火山方舟、Jina、Cohere 等域名，并开放 localhost 供 Ollama）。使用其他服务时需将域名加入 `manifest.json` 的 `network.allowedHosts`（支持 `*.suffix` 通配）后重启。URL 快照抓取同样受此白名单约束。
+## 配置 MinerU 文档解析（可选）
+
+导入 PDF / Office（docx/pptx/xlsx 等）/ 图片时自动调用 MinerU 转为 **Markdown** 再索引，转换产物落盘缓存，重建索引不重复调用。
+
+| 配置项 | 说明 |
+| --- | --- |
+| `mineruBaseUrl` | MinerU 解析服务地址，默认 `https://mineru.net`；留空禁用 |
+| `mineruApiKey` | MinerU API Token（从 https://mineru.net/apiManage 创建，有效期三个月） |
+| `mineruModel` | 解析模型：`vlm`（推荐）/ `pipeline` / `MinerU-HTML` |
+| `mineruLanguage` | 文档语言，默认 `ch` |
+| `mineruAutoSplit` | PDF 页数超限自动分段解析（默认开） |
+
+**两种模式自动选择**：
+- 未配置 Token → **Agent 轻量 API**（免 Token，≤10MB / 20 页）
+- 配置 Token → **精准 API**（≤200MB / 200 页）
+
+> 文件字节会上传至 MinerU 第三方服务器解析，敏感文件请谨慎。
+
+## 简单 Wiki（可选）
+
+把材料摄入为 Markdown 摘要页（关键词 + 要点），UI 展示 Wiki 摘要列表。工具：`knowledge_wiki_ingest`（传 itemId 或文本）。
+
+> **网络白名单**：Hana 插件平台强制 `network.allowedHosts`（manifest 已预置 OpenAI、阿里百炼、硅基流动、智谱、百度千帆、火山方舟、Jina、Cohere、MinerU 等域名，并开放 localhost 供 Ollama）。使用其他服务时需将域名加入 `manifest.json` 的 `network.allowedHosts`（支持 `*.suffix` 通配）后重启。URL 快照抓取同样受此白名单约束。
 
 ## Agent 工具
 
@@ -82,6 +106,7 @@ node --env-file=.env tests/real-models.mjs  # SiliconFlow bge-m3 + bge-reranker 
 | `knowledge_read_item` | 读取材料全文 | 只读 |
 | `knowledge_list_item_chunks` | 查看材料的检索片段 | 只读 |
 | `knowledge_retry_item` | 重试失败材料 | routine |
+| `knowledge_wiki_ingest` | 把材料摄入为 Wiki 摘要页 | routine |
 
 另注册 bus 能力 `hank-knowledge:list-bases` / `hank-knowledge:search` / `hank-knowledge:add-items`，供宿主与其他插件以 `requestBus` 调用。
 
@@ -117,7 +142,8 @@ bases/{baseId}/
 
 ## 已知限制
 
-- **二进制格式**：`txt/md/csv/json/html/代码` 等文本类直接解析；PDF / Office 等二进制需先转换为文本（插件不内置文件处理器）
+- **二进制格式**：`txt/md/csv/json/html/代码` 等文本类直接解析；PDF / Office / 图片配置 MinerU 后自动转换，未配置时保持"需要转换"失败态
+- **MinerU 限额**：Agent 轻量 API ≤10MB/20 页；精准 API ≤200MB/200 页；文件上传至第三方服务器，敏感数据请注意
 - **检索规模**：向量车道为暴力扫描（与 Cherry 当前实现一致），单库向量行数建议控制在十万以内
 - **URL 快照**：首次索引抓取一次并落盘（离线可读）；"刷新"重新抓取；抓取受网络白名单约束
-- **阈值语义**：`threshold` 字段保留，但当前实现只产生 `ranking` 分数（BM25/RRF），阈值仅对 `relevance` 分数生效（暂无 rerank），与 Cherry 当前行为一致
+- **阈值语义**：`threshold` 仅对 rerank 的 `relevance` 分数生效；BM25/RRF 的 `ranking` 分数透传不过滤（与 Cherry 当前行为一致）

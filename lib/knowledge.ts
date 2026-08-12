@@ -16,6 +16,8 @@ import { tokenizeQuery } from "./tokenizer";
 import type { AddItemInput, ItemType, KnowledgeItem, KnowledgeStore } from "./store";
 import { KnowledgeWorkflow } from "./workflow";
 import type { HanaPluginConfigStore, HanaPluginLogger, HanaPluginNetwork } from "./types";
+import { Wiki } from "./wiki";
+import type { WikiIngestInput, WikiIngestResult } from "./wiki";
 
 export interface SearchOptions {
   topK?: number;
@@ -381,6 +383,27 @@ export class KnowledgeService {
     }
     const buffer = await store.readRawFile(baseId, relativePath);
     return { text: buffer.toString("utf8"), item };
+  }
+
+  // ---- 简单 Wiki ----
+
+  /** 摄入材料 → 生成摘要页。 */
+  async wikiIngest(input: WikiIngestInput): Promise<WikiIngestResult> {
+    await this.deps.store.requireBase(input.baseId);
+    const wiki = new Wiki(this.deps.store);
+    return wiki.ingest(input);
+  }
+
+  /** 列出 wiki 页。 */
+  async wikiList(baseId: string) {
+    const wiki = new Wiki(this.deps.store);
+    return wiki.list(baseId);
+  }
+
+  /** 读取 wiki 页。 */
+  async wikiRead(baseId: string, slug: string) {
+    const wiki = new Wiki(this.deps.store);
+    return wiki.read(baseId, slug);
   }
 
   // ---- 内部 ----

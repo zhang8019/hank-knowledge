@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "hank-knowledge",
   "name": "知识库",
-  "version": "0.2.0",
-  "description": "知识库插件：把 Cherry Studio 的知识库能力移植到 Hanko Agent。管理化材料库（导入即快照、生命周期状态机、后台异步索引），默认 BM25 全文检索，可配置 embedding 升级为向量 / 混合检索，可配置 rerank 精排。",
+  "version": "0.3.0",
+  "description": "知识库插件：管理化材料库（导入即快照、后台异步索引），默认 BM25 全文检索，可配置向量/重排；支持 MinerU 高精度文档解析（PDF/Office/图片自动转 Markdown）与简单 Wiki 摘要。",
   "author": {
     "name": "hank-knowledge"
   },
@@ -43,9 +43,13 @@
       "*.jina.ai",
       "api.cohere.com",
       "*.cohere.com",
-      "api.githubcopilot.com"
+      "api.githubcopilot.com",
+      "mineru.net",
+      "cdn-mineru.openxlab.org.cn",
+      "mineru.oss-cn-shanghai.aliyuncs.com",
+      "oss-mineru.openxlab.org.cn"
     ],
-    "methods": ["GET", "POST"],
+    "methods": ["GET", "POST", "PUT"],
     "allowLocalhost": true,
     "defaultTimeoutMs": 60000,
     "maxResponseBytes": 8388608
@@ -121,6 +125,36 @@
           "maximum": 1,
           "title": "检索相关性阈值",
           "description": "仅对重排序后的相关性分数生效；0 表示不过滤。"
+        },
+        "mineruBaseUrl": {
+          "type": "string",
+          "default": "https://mineru.net",
+          "title": "MinerU 解析服务地址",
+          "description": "MinerU 文档解析 API 地址，默认官方 https://mineru.net。留空则禁用，二进制文件（PDF/Office/图片）需先转文本。"
+        },
+        "mineruApiKey": {
+          "type": "string",
+          "default": "",
+          "title": "MinerU API Token",
+          "description": "MinerU API Token（从 https://mineru.net/apiManage 创建，有效期三个月）。留空时用免 Token 的 Agent 轻量 API（≤10MB/20 页）。"
+        },
+        "mineruModel": {
+          "type": "string",
+          "default": "vlm",
+          "title": "MinerU 解析模型",
+          "description": "解析模型：vlm（推荐）/ pipeline / MinerU-HTML。"
+        },
+        "mineruLanguage": {
+          "type": "string",
+          "default": "ch",
+          "title": "文档语言",
+          "description": "解析语言：ch / en / japan / korean 等。"
+        },
+        "mineruAutoSplit": {
+          "type": "boolean",
+          "default": true,
+          "title": "超限自动拆分",
+          "description": "PDF 页数超过 API 限制时自动分段解析并拼接。"
         }
       }
     }

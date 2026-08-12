@@ -11,6 +11,7 @@
 import { EmbeddingClient } from "./embedding";
 import { MemoryIndex } from "./index";
 import { KnowledgeService } from "./knowledge";
+import { MineruClient } from "./mineru";
 import { RerankClient } from "./rerank";
 import { KnowledgeStore } from "./store";
 import { KnowledgeWorkflow } from "./workflow";
@@ -37,10 +38,12 @@ export function initRuntime(ctx: HanaPluginContext): RuntimeBundle {
   const index = new MemoryIndex();
   const getEmbedding = () => EmbeddingClient.fromConfig(ctx.config, ctx.network);
   const getRerank = () => RerankClient.fromConfig(ctx.config, ctx.network);
+  const getMineru = () => MineruClient.fromConfig(ctx.config, ctx.network);
   const workflow = new KnowledgeWorkflow({
     store,
     index,
     getEmbedding,
+    getMineru,
     network: ctx.network,
     log: ctx.log,
   });

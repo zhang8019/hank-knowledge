@@ -15,9 +15,10 @@
 import { join } from "node:path";
 import { normalizeText, splitIntoChunks } from "./chunker";
 import type { EmbeddingClient } from "./embedding";
-import { extractTextFromBuffer } from "./extract";
+import { extractTextFromBuffer, isTextLike } from "./extract";
 import { unitId, slugify } from "./ids";
 import type { MemoryIndex } from "./index";
+import type { MineruClient } from "./mineru";
 import type {
   AddItemInput,
   ItemStatus,
@@ -33,6 +34,7 @@ export interface WorkflowDeps {
   store: KnowledgeStore;
   index: MemoryIndex;
   getEmbedding: () => Promise<EmbeddingClient | null>;
+  getMineru: () => Promise<MineruClient | null>;
   network: HanaPluginNetwork;
   log: HanaPluginLogger;
 }
@@ -264,9 +266,40 @@ export class KnowledgeWorkflow {
       throw new Error(`材料源文件缺失: ${relativePath}`);
     }
     const buffer = await store.readRawFile(item.baseId, relativePath);
+
+    // 二进制格式（PDF/Office/图片）：优先读已转换缓存，否则走 MinerU
+    if (!isTextLike(relativePath)) {
+      const converted = await this.ensureMineruConverted(item, relativePath, buffer);
+      return { text: converted };
+    }
+
     const extracted = await extractTextFromBuffer(relativePath, buffer);
     if (!extracted.ok) throw new Error(extracted.reason);
     return extracted;
+  }
+
+  /** MinerU 转换：命中缓存或调用 API，产物写 raw/converted/{itemId}.md。 */
+  private async ensureMineruConverted(
+    item: KnowledgeItem,
+    sourcePath: string,
+    buffer: Buffer,
+  ): Promise<string> {
+    const store = this.deps.store;
+    const convertedPath = `converted/${item.id}.md`;
+    if (item.indexedRelativePath === convertedPath || (await store.rawFileExists(item.baseId, convertedPath))) {
+      return (await store.readRawFile(item.baseId, convertedPath)).toString("utf8");
+    }
+    const mineru = await this.deps.getMineru();
+    if (!mineru) {
+      throw new Error(
+        `二进制格式（${sourcePath.split(".").pop()}），请配置 MinerU 自动转换，或先转换为文本`,
+      );
+    }
+    const result = await mineru.parseFile(item.name || "document", buffer);
+    await store.writeRawFile(item.baseId, convertedPath, result.markdown);
+    await store.updateItem(item.baseId, item.id, { indexedRelativePath: convertedPath });
+    this.deps.log.info(`[mineru] converted ${item.name} (${result.mode}), ${result.markdown.length} chars`);
+    return result.markdown;
   }
 
   private async runDeleteSubtree(baseId: string, rootIds: string[]): Promise<void> {
